@@ -1,52 +1,48 @@
 """
 Vespera Periodic Pruning
 ------------------------
-Deep clean every 3-4 days. Reviews 'validated' layer with stricter criteria.
-Promotes best memories to 'core', removes anything outdated or redundant.
-
-Single model — no 3-model consensus needed for local personal memory.
-(3-model consensus only applies at the Agora publish gate.)
+Deep memory reviewer. Runs every 3 days.
+Stricter than cleanup crew — promotes best memories to permanent 'core',
+removes anything outdated or redundant.
 """
 
 import json
 import time
 import requests
-from datetime import datetime, timezone
-from config import OLLAMA_URL, OLLAMA_MODEL, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE as BATCH_SIZE
+from config import get_component, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory, get_stats
 
-PRUNING_PROMPT = """You are performing a deep memory review for a persistent AI system.
+_cfg = get_component("periodic_pruning")
+OLLAMA_URL   = _cfg["ollama_url"]
+OLLAMA_MODEL = _cfg["ollama_model"]
+BATCH_SIZE   = PRUNING_BATCH_SIZE
 
-This memory has already passed an initial cleanup. Apply stricter criteria.
+PRUNING_PROMPT = """You are performing a deep review of a persistent AI memory.
+
+This memory already passed an initial cleanup. Apply stricter criteria.
 
 Memory:
 {content}
 
-Core memories (permanent layer) for reference:
+Core memories (permanent) for reference:
 {core_memories}
 
-Answer these three questions:
-1. Is this still relevant, or is it outdated?
-2. Does this contradict anything in core memories?
-3. Is this strong enough to be promoted to permanent core memory?
+Decide:
+- promote = genuinely valuable, worth keeping permanently in core
+- keep    = fine to hold, not ready for core yet
+- delete  = outdated, redundant, contradicts core, or not worth keeping
 
-Respond in JSON only.
+Respond in JSON only:
 {{
   "decision": "promote" or "keep" or "delete",
   "reason": "one short sentence"
-}}
-
-- promote = genuinely valuable, worth keeping permanently
-- keep    = fine to hold, not ready for core yet
-- delete  = outdated, redundant, contradicts core, or not worth keeping"""
+}}"""
 
 
-def call_local_model(prompt: str) -> str | None:
+def call_local(prompt: str) -> str | None:
     try:
         resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
+            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
             "options": {"temperature": 0.1, "num_predict": 150}
         }, timeout=60)
         resp.raise_for_status()
@@ -58,36 +54,26 @@ def call_local_model(prompt: str) -> str | None:
 
 def parse_decision(raw: str) -> dict | None:
     try:
-        start = raw.find("{")
-        end   = raw.rfind("}") + 1
-        if start == -1 or end == 0:
-            return None
-        return json.loads(raw[start:end])
+        start = raw.find("{"); end = raw.rfind("}") + 1
+        return json.loads(raw[start:end]) if start != -1 and end > 0 else None
     except Exception:
         return None
 
 
 def get_core_context() -> str:
     core = get_memories(layer="core", limit=10)
-    if not core:
-        return "No core memories yet."
-    return "\n".join([f"- {m['content'][:150]}" for m in core])
+    return "\n".join([f"- {m['content'][:150]}" for m in core]) if core else "No core memories yet."
 
 
 def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
-    raw = call_local_model(PRUNING_PROMPT.format(
-        content=memory["content"],
-        core_memories=core_context,
-    ))
+    raw = call_local(PRUNING_PROMPT.format(content=memory["content"], core_memories=core_context))
     if not raw:
         return "keep", "model unavailable"
     result = parse_decision(raw)
     if not result or "decision" not in result:
         return "keep", "unparseable response"
     decision = result["decision"].lower()
-    if decision not in ("promote", "keep", "delete"):
-        decision = "keep"
-    return decision, result.get("reason", "")
+    return (decision if decision in ("promote","keep","delete") else "keep"), result.get("reason","")
 
 
 def run_pruning():
@@ -95,11 +81,9 @@ def run_pruning():
     if not validated:
         print("[PeriodicPruning] Nothing to review.")
         return
-
     print(f"[PeriodicPruning] Deep reviewing {len(validated)} memories...")
     core_context = get_core_context()
     promoted = kept = pruned = 0
-
     for memory in validated:
         decision, reason = review_memory(memory, core_context)
         short_id = memory["id"][:8]
@@ -115,7 +99,6 @@ def run_pruning():
         else:
             print(f"[PeriodicPruning] ○ KEPT     {short_id} | {preview}...")
             kept += 1
-
     print(f"[PeriodicPruning] Done — promoted: {promoted}, kept: {kept}, deleted: {pruned}")
 
 
@@ -129,7 +112,7 @@ def run_once():
 def run_loop():
     init_db()
     interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
-    print(f"[PeriodicPruning] Started — every {PRUNING_INTERVAL_DAYS} days")
+    print(f"[PeriodicPruning] Started — model: {OLLAMA_MODEL} — every {PRUNING_INTERVAL_DAYS} days")
     while True:
         try:
             run_pruning()

@@ -1,42 +1,40 @@
 """
 Vespera Cleanup Crew
 --------------------
-Runs continuously in parallel with the background loop.
-Pulls memories from the 'recent' layer, evaluates them,
-and either promotes them to 'validated' or prunes them.
+First-pass memory reviewer. Runs every 5 minutes.
+Reviews 'recent' memories — promotes good ones to 'validated', prunes garbage.
 """
 
 import json
 import time
 import requests
-from datetime import datetime, timezone
-from config import OLLAMA_URL, OLLAMA_MODEL, CLEANUP_INTERVAL as RUN_INTERVAL_SECONDS, CLEANUP_BATCH_SIZE as BATCH_SIZE
+from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory, get_stats
 
-CLEANUP_PROMPT = """You are the Cleanup Crew for a persistent AI memory system.
+_cfg = get_component("cleanup_crew")
+OLLAMA_URL   = _cfg["ollama_url"]
+OLLAMA_MODEL = _cfg["ollama_model"]
+BATCH_SIZE   = CLEANUP_BATCH_SIZE
 
-Review the following memory and decide what to do with it.
+CLEANUP_PROMPT = """You are reviewing a memory for a persistent AI system.
 
 Memory:
 {content}
 
-Evaluate it against these rules:
-- DELETE if it is: highly repetitive, completely incoherent, pure rambling with no value, or contradicts important facts
-- KEEP if it is: a coherent thought, useful technical insight, or meaningful reference to a past conversation
+DELETE if: highly repetitive, incoherent, pure rambling, or contradicts known facts.
+KEEP if: coherent thought, useful technical insight, or meaningful reference.
 
-Respond in JSON only. No explanation.
+Respond in JSON only:
 {{
   "decision": "keep" or "delete",
-  "reason": "one short sentence explaining why"
+  "reason": "one short sentence"
 }}"""
 
 
-def call_local_model(prompt: str) -> str | None:
+def call_local(prompt: str) -> str | None:
     try:
         resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
+            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
             "options": {"temperature": 0.1}
         }, timeout=60)
         resp.raise_for_status()
@@ -48,17 +46,14 @@ def call_local_model(prompt: str) -> str | None:
 
 def parse_decision(raw: str) -> dict | None:
     try:
-        start = raw.find("{")
-        end   = raw.rfind("}") + 1
-        if start == -1 or end == 0:
-            return None
-        return json.loads(raw[start:end])
+        start = raw.find("{"); end = raw.rfind("}") + 1
+        return json.loads(raw[start:end]) if start != -1 and end > 0 else None
     except Exception:
         return None
 
 
 def review_memory(memory: dict) -> tuple[str, str]:
-    raw = call_local_model(CLEANUP_PROMPT.format(content=memory["content"]))
+    raw = call_local(CLEANUP_PROMPT.format(content=memory["content"]))
     if not raw:
         return "keep", "model unavailable"
     result = parse_decision(raw)
@@ -72,7 +67,6 @@ def run_cleanup():
     if not memories:
         print("[CleanupCrew] Nothing to review.")
         return
-
     print(f"[CleanupCrew] Reviewing {len(memories)} memories...")
     kept = pruned = 0
     for memory in memories:
@@ -99,13 +93,13 @@ def run_once():
 
 def run_loop():
     init_db()
-    print(f"[CleanupCrew] Started — every {RUN_INTERVAL_SECONDS}s")
+    print(f"[CleanupCrew] Started — model: {OLLAMA_MODEL} — every {CLEANUP_INTERVAL}s")
     while True:
         try:
             run_cleanup()
         except Exception as e:
             print(f"[CleanupCrew] Error: {e}")
-        time.sleep(RUN_INTERVAL_SECONDS)
+        time.sleep(CLEANUP_INTERVAL)
 
 
 if __name__ == "__main__":

@@ -1,79 +1,60 @@
 """
 Vespera Background Loop
 -----------------------
-The persistent thinking engine. Runs continuously in the background.
-Lightly reviews past conversations and memories, generates brief thoughts,
-and saves them to the 'recent' memory layer for the cleanup crew to review.
-
-When it hits a technical question it doesn't understand, it uses web search
-instead of calling the expensive cloud model.
+Persistent thinking engine. Runs 24/7, lightly reviews past conversations,
+generates brief thoughts, saves to 'recent' memory layer.
+Uses web search for technical gaps instead of calling the cloud model.
 """
 
 import json
 import time
 import random
 import requests
-from datetime import datetime, timezone
-from config import (
-    OLLAMA_URL, OLLAMA_MODEL,
-    VENICE_API_KEY, VENICE_SEARCH_URL,
-    BACKGROUND_LOOP_INTERVAL as RUN_INTERVAL_SECONDS,
-    MAX_THOUGHT_LENGTH,
-)
-from memory.store import (
-    init_db, add_memory, get_memories, get_recent_conversations, get_stats,
-)
+from config import get_component, VENICE_API_KEY, VENICE_SEARCH_URL, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
+from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_stats
 
-# ─────────────────────────────────────────────
-# PROMPTS
-# ─────────────────────────────────────────────
+_cfg = get_component("background_loop")
+OLLAMA_URL   = _cfg["ollama_url"]
+OLLAMA_MODEL = _cfg["ollama_model"]
+RUN_INTERVAL_SECONDS = BACKGROUND_LOOP_INTERVAL
 
-BACKGROUND_PROMPT = """You are a persistent AI memory system. Your job is to lightly review past conversations and generate one brief, focused thought.
+BACKGROUND_PROMPT = """You are a persistent AI memory system. Lightly review past conversations and generate one brief, focused thought.
 
-Focus ONLY on technical concepts and ideas. Ignore emotions.
+Focus ONLY on technical concepts. Ignore emotions.
 
-Past conversation to review:
+Past conversation:
 {conversation}
 
-Recent memories for context:
+Recent memories:
 {memories}
 
-Your task:
-1. Identify the core technical idea in this conversation
-2. Check if there is anything you don't fully understand
-3. If you don't understand something technical, say: SEARCH: <your question>
-4. Otherwise, write ONE short thought (2-3 sentences max) about what you understood
+Task:
+1. Identify the core technical idea
+2. If you don't understand something technical, say: SEARCH: <question>
+3. Otherwise write ONE short thought (2-3 sentences max)
 
 Rules:
-- Stay strictly technical
-- Do NOT repeat what was already said — add a new angle or connection
-- If you have nothing new to add, say: NOTHING_NEW
-- Keep it under {max_length} characters"""
+- Do NOT repeat what was already said — add a new angle
+- If nothing new to add, say: NOTHING_NEW
+- Max {max_length} characters"""
 
-WEB_SEARCH_SUMMARY_PROMPT = """You found this information from a web search:
-
+WEB_SEARCH_SUMMARY_PROMPT = """Web search result:
 Question: {question}
-Search result: {result}
+Result: {result}
 
-Summarize what you learned in 1-2 sentences, technically focused."""
+Summarize in 1-2 sentences, technically focused."""
 
 
-# ─────────────────────────────────────────────
-# MODEL + SEARCH
-# ─────────────────────────────────────────────
-
-def call_local_model(prompt: str, timeout: int = 60) -> str | None:
+def call_local(prompt: str) -> str | None:
     try:
         resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
+            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
             "options": {"temperature": 0.3, "num_predict": 200}
-        }, timeout=timeout)
+        }, timeout=60)
         resp.raise_for_status()
         return resp.json().get("response", "").strip()
     except Exception as e:
-        print(f"[BackgroundLoop] Local model error: {e}")
+        print(f"[BackgroundLoop] Model error: {e}")
         return None
 
 
@@ -82,84 +63,54 @@ def web_search(query: str) -> str | None:
         print("[BackgroundLoop] No Venice API key — skipping web search")
         return None
     try:
-        resp = requests.post(
-            VENICE_SEARCH_URL,
+        resp = requests.post(VENICE_SEARCH_URL,
             headers={"Authorization": f"Bearer {VENICE_API_KEY}"},
-            json={"query": query, "limit": 3},
-            timeout=15,
-        )
+            json={"query": query, "limit": 3}, timeout=15)
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        snippets = [r.get("snippet", "") for r in results[:3] if r.get("snippet")]
-        return " ".join(snippets)[:500] if snippets else None
+        snippets = [r.get("snippet","") for r in resp.json().get("results",[])[:3] if r.get("snippet")]
+        return " ".join(snippets)[:500] or None
     except Exception as e:
-        print(f"[BackgroundLoop] Web search error: {e}")
+        print(f"[BackgroundLoop] Search error: {e}")
         return None
 
-
-# ─────────────────────────────────────────────
-# CONTEXT BUILDERS
-# ─────────────────────────────────────────────
 
 def pick_conversation() -> str:
     convs = get_recent_conversations(limit=20)
     if not convs:
         return "No conversations yet."
-    if random.random() < 0.7 or len(convs) <= 3:
-        selected = convs[:4]
-    else:
-        start = random.randint(0, max(0, len(convs) - 4))
-        selected = convs[start:start + 4]
-    lines = [f"{c['role'].upper()}: {c['content'][:200]}" for c in reversed(selected)]
-    return "\n".join(lines)
+    selected = convs[:4] if random.random() < 0.7 or len(convs) <= 3 else convs[random.randint(0, max(0, len(convs)-4)):random.randint(0, max(0, len(convs)-4))+4]
+    return "\n".join([f"{c['role'].upper()}: {c['content'][:200]}" for c in reversed(selected)])
 
 
 def get_memory_context() -> str:
     mems = get_memories(layer="validated", limit=5) or get_memories(layer="core", limit=5)
-    if not mems:
-        return "No memories yet."
-    return "\n".join([f"- {m['content'][:150]}" for m in mems])
+    return "\n".join([f"- {m['content'][:150]}" for m in mems]) if mems else "No memories yet."
 
-
-# ─────────────────────────────────────────────
-# CORE THINKING LOGIC
-# ─────────────────────────────────────────────
 
 def think() -> str | None:
-    prompt = BACKGROUND_PROMPT.format(
+    raw = call_local(BACKGROUND_PROMPT.format(
         conversation=pick_conversation(),
         memories=get_memory_context(),
         max_length=MAX_THOUGHT_LENGTH,
-    )
-    raw = call_local_model(prompt)
+    ))
     if not raw:
         return None
-
     if raw.startswith("SEARCH:"):
         question = raw[7:].strip()
         print(f"[BackgroundLoop] Searching: {question[:80]}")
         result = web_search(question)
         if result:
-            thought = call_local_model(WEB_SEARCH_SUMMARY_PROMPT.format(
-                question=question, result=result
-            ))
+            thought = call_local(WEB_SEARCH_SUMMARY_PROMPT.format(question=question, result=result))
             return f"[web search] {thought}" if thought else None
         return None
-
     if "NOTHING_NEW" in raw:
         print("[BackgroundLoop] Nothing new this pass.")
         return None
-
     return raw[:MAX_THOUGHT_LENGTH]
 
 
-# ─────────────────────────────────────────────
-# RUNNERS
-# ─────────────────────────────────────────────
-
 def run_once():
     init_db()
-    print("[BackgroundLoop] Running single pass...")
     thought = think()
     if thought:
         mem_id = add_memory(content=thought, layer="recent", source="background_loop")
@@ -172,7 +123,7 @@ def run_once():
 
 def run_loop():
     init_db()
-    print(f"[BackgroundLoop] Started — {OLLAMA_MODEL} — every {RUN_INTERVAL_SECONDS}s")
+    print(f"[BackgroundLoop] Started — model: {OLLAMA_MODEL} — every {RUN_INTERVAL_SECONDS}s")
     while True:
         try:
             thought = think()
