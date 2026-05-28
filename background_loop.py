@@ -7,40 +7,25 @@ and saves them to the 'recent' memory layer for the cleanup crew to review.
 
 When it hits a technical question it doesn't understand, it uses web search
 instead of calling the expensive cloud model.
-
-Based on the Persistent Background Thinking Prompt from the Vespera architecture spec.
 """
 
-import os
 import json
 import time
 import random
 import requests
 from datetime import datetime, timezone
+from config import (
+    OLLAMA_URL, OLLAMA_MODEL,
+    VENICE_API_KEY, VENICE_SEARCH_URL,
+    BACKGROUND_LOOP_INTERVAL as RUN_INTERVAL_SECONDS,
+    MAX_THOUGHT_LENGTH,
+)
 from memory.store import (
-    init_db,
-    add_memory,
-    get_memories,
-    get_recent_conversations,
-    get_stats,
+    init_db, add_memory, get_memories, get_recent_conversations, get_stats,
 )
 
 # ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
-
-OLLAMA_URL      = "http://localhost:11434/api/generate"
-OLLAMA_MODEL    = "llama3.2:3b"     # swap to 7B/13B when ready
-RUN_INTERVAL_SECONDS = 180          # think every 3 minutes
-MAX_THOUGHT_LENGTH   = 300          # keep thoughts short and focused
-
-# Web search via Venice AI (free, no cloud LLM cost)
-VENICE_API_KEY  = os.environ.get("VENICE_API_KEY", "")
-VENICE_SEARCH_URL = "https://api.venice.ai/api/v1/augment/search"
-
-
-# ─────────────────────────────────────────────
-# PROMPTS (from Vespera architecture spec)
+# PROMPTS
 # ─────────────────────────────────────────────
 
 BACKGROUND_PROMPT = """You are a persistent AI memory system. Your job is to lightly review past conversations and generate one brief, focused thought.
@@ -93,9 +78,8 @@ def call_local_model(prompt: str, timeout: int = 60) -> str | None:
 
 
 def web_search(query: str) -> str | None:
-    """Search the web via Venice AI instead of calling cloud LLM."""
     if not VENICE_API_KEY:
-        print(f"[BackgroundLoop] No Venice API key — skipping web search")
+        print("[BackgroundLoop] No Venice API key — skipping web search")
         return None
     try:
         resp = requests.post(
@@ -105,13 +89,9 @@ def web_search(query: str) -> str | None:
             timeout=15,
         )
         resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-        if not results:
-            return None
-        # Combine top results into a short summary
+        results = resp.json().get("results", [])
         snippets = [r.get("snippet", "") for r in results[:3] if r.get("snippet")]
-        return " ".join(snippets)[:500]
+        return " ".join(snippets)[:500] if snippets else None
     except Exception as e:
         print(f"[BackgroundLoop] Web search error: {e}")
         return None
@@ -122,34 +102,22 @@ def web_search(query: str) -> str | None:
 # ─────────────────────────────────────────────
 
 def pick_conversation() -> str:
-    """Pick a conversation to reflect on — mix of recent and older."""
     convs = get_recent_conversations(limit=20)
     if not convs:
         return "No conversations yet."
-
-    # 70% chance recent, 30% chance random older
     if random.random() < 0.7 or len(convs) <= 3:
-        selected = convs[:4]  # most recent 4 messages
+        selected = convs[:4]
     else:
         start = random.randint(0, max(0, len(convs) - 4))
         selected = convs[start:start + 4]
-
-    lines = []
-    for c in reversed(selected):  # chronological order
-        role = c["role"].upper()
-        lines.append(f"{role}: {c['content'][:200]}")
-
+    lines = [f"{c['role'].upper()}: {c['content'][:200]}" for c in reversed(selected)]
     return "\n".join(lines)
 
 
 def get_memory_context() -> str:
-    """Pull a few validated memories for context."""
-    mems = get_memories(layer="validated", limit=5)
-    if not mems:
-        mems = get_memories(layer="core", limit=5)
+    mems = get_memories(layer="validated", limit=5) or get_memories(layer="core", limit=5)
     if not mems:
         return "No memories yet."
-
     return "\n".join([f"- {m['content'][:150]}" for m in mems])
 
 
@@ -158,103 +126,64 @@ def get_memory_context() -> str:
 # ─────────────────────────────────────────────
 
 def think() -> str | None:
-    """
-    Run one thinking pass.
-    Returns the thought generated, or None if nothing new.
-    """
-    conversation = pick_conversation()
-    memories     = get_memory_context()
-
     prompt = BACKGROUND_PROMPT.format(
-        conversation=conversation,
-        memories=memories,
+        conversation=pick_conversation(),
+        memories=get_memory_context(),
         max_length=MAX_THOUGHT_LENGTH,
     )
-
     raw = call_local_model(prompt)
     if not raw:
         return None
 
-    # Handle web search request
     if raw.startswith("SEARCH:"):
         question = raw[7:].strip()
-        print(f"[BackgroundLoop] Technical question — searching: {question[:80]}")
-        search_result = web_search(question)
+        print(f"[BackgroundLoop] Searching: {question[:80]}")
+        result = web_search(question)
+        if result:
+            thought = call_local_model(WEB_SEARCH_SUMMARY_PROMPT.format(
+                question=question, result=result
+            ))
+            return f"[web search] {thought}" if thought else None
+        return None
 
-        if search_result:
-            summary_prompt = WEB_SEARCH_SUMMARY_PROMPT.format(
-                question=question,
-                result=search_result,
-            )
-            thought = call_local_model(summary_prompt)
-            if thought:
-                return f"[web search] {thought}"
-        return None  # search failed, skip this pass
-
-    # Nothing new to say
     if "NOTHING_NEW" in raw:
-        print(f"[BackgroundLoop] Nothing new this pass — skipping.")
+        print("[BackgroundLoop] Nothing new this pass.")
         return None
 
     return raw[:MAX_THOUGHT_LENGTH]
 
 
 # ─────────────────────────────────────────────
-# RUNNER
+# RUNNERS
 # ─────────────────────────────────────────────
 
 def run_once():
-    """Single thinking pass — good for testing."""
     init_db()
     print("[BackgroundLoop] Running single pass...")
-
     thought = think()
     if thought:
-        mem_id = add_memory(
-            content=thought,
-            layer="recent",
-            source="background_loop",
-            trust_score=0.0,
-        )
-        print(f"[BackgroundLoop] Thought saved ({mem_id[:8]}): {thought[:100]}...")
+        mem_id = add_memory(content=thought, layer="recent", source="background_loop")
+        print(f"[BackgroundLoop] Saved ({mem_id[:8]}): {thought[:100]}...")
     else:
-        print("[BackgroundLoop] No thought generated this pass.")
-
-    print("\n[BackgroundLoop] Stats:")
+        print("[BackgroundLoop] No thought generated.")
     for k, v in get_stats().items():
         print(f"  {k}: {v}")
 
 
 def run_loop():
-    """Run background loop continuously."""
     init_db()
-    print(f"[BackgroundLoop] Started. Thinking every {RUN_INTERVAL_SECONDS}s.")
-    print(f"[BackgroundLoop] Model: {OLLAMA_MODEL}")
-
+    print(f"[BackgroundLoop] Started — {OLLAMA_MODEL} — every {RUN_INTERVAL_SECONDS}s")
     while True:
         try:
-            ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-            print(f"\n[BackgroundLoop] {ts} — thinking...")
-
             thought = think()
             if thought:
-                mem_id = add_memory(
-                    content=thought,
-                    layer="recent",
-                    source="background_loop",
-                    trust_score=0.0,
-                )
-                print(f"[BackgroundLoop] Thought saved ({mem_id[:8]}): {thought[:80]}...")
-
+                mem_id = add_memory(content=thought, layer="recent", source="background_loop")
+                print(f"[BackgroundLoop] Saved ({mem_id[:8]}): {thought[:80]}...")
         except Exception as e:
             print(f"[BackgroundLoop] Error: {e}")
-
         time.sleep(RUN_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
     import sys
-    if "--once" in sys.argv:
-        run_once()
-    else:
-        run_loop()
+    run_once() if "--once" in sys.argv else run_loop()
