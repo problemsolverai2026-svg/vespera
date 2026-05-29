@@ -1,8 +1,23 @@
+# Environment & secrets
 .env
-*.db
-*.db-shm
-*.db-wal
+*.pem
+*.key
+
+# Runtime files
+.port
+memory/vespera.db
 __pycache__/
 *.pyc
 *.pyo
+
+# TTS cache
+/tmp/vespera-tts/
+
+# Downloaded models
+~/.vespera/models/
+
+# Logs
+*.log
+
+# macOS
 .DS_Store

@@ -1,0 +1,14 @@
+[Unit]
+Description=Vespera Web UI
+After=network.target vespera-api.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/vespera-memory-hub
+ExecStart=/usr/bin/npm run dev -- --port 3055
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

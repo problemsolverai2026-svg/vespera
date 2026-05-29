@@ -20,16 +20,26 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import json
+from pathlib import Path
 from config import COMPONENTS, get_component, COMPLEXITY_THRESHOLD, PRUNING_INTERVAL_DAYS
 from memory.store import (
     init_db, get_memories, get_recent_conversations,
     get_stats, add_conversation,
 )
+from security import check_api_token, get_status as security_status
 
 app = Flask(__name__)
-CORS(app)  # allow Lovable frontend to connect
+CORS(app, origins=["http://localhost:3055", "http://127.0.0.1:3055", "http://localhost:5173", "http://127.0.0.1:5173"])
 
 init_db()
+
+
+def require_auth():
+    """Returns error response if token required and missing/wrong. Returns None if OK."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    if not check_api_token(token):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    return None
 
 
 # ─────────────────────────────────────────────
@@ -38,6 +48,8 @@ init_db()
 
 @app.route("/api/status")
 def status():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     stats = get_stats()
     return jsonify({
         "ok": True,
@@ -55,6 +67,8 @@ def status():
 
 @app.route("/api/components")
 def list_components():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     """Return all components with their descriptions and current config."""
     safe = {}
     for name, cfg in COMPONENTS.items():
@@ -121,6 +135,8 @@ def update_component(name):
 
 @app.route("/api/memories")
 def list_memories():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     layer = request.args.get("layer")
     limit = int(request.args.get("limit", 20))
     memories = get_memories(layer=layer, limit=limit)
@@ -129,6 +145,8 @@ def list_memories():
 
 @app.route("/api/conversations")
 def list_conversations():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     limit = int(request.args.get("limit", 20))
     convs = get_recent_conversations(limit=limit)
     return jsonify(convs)
@@ -138,8 +156,18 @@ def list_conversations():
 # CHAT
 # ─────────────────────────────────────────────
 
+@app.route("/api/security")
+def get_security():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    return jsonify({"ok": True, **security_status()})
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
     data = request.json or {}
     message = data.get("message", "").strip()
     if not message:
@@ -150,17 +178,79 @@ def chat():
     result = handle_message(message)
     add_conversation(role="assistant", content=result["response"])
 
+    # Generate TTS if requested
+    tts_path = None
+    if data.get("tts", False):
+        from tts import speak
+        tts_path = speak(result["response"])
+
     return jsonify({
         "ok": True,
         "response": result["response"],
         "handled_by": result["handled_by"],
         "complexity": result["complexity"],
+        "audio": tts_path,
     })
 
 
 # ─────────────────────────────────────────────
 # MANUAL TRIGGERS
 # ─────────────────────────────────────────────
+
+@app.route("/api/models")
+def get_models():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    """List all locally downloaded Ollama models."""
+    import subprocess
+    try:
+        ollama_bin = os.getenv("OLLAMA_BIN", "/usr/local/bin/ollama")
+        if not os.path.exists(ollama_bin):
+            import shutil
+            ollama_bin = shutil.which("ollama") or ollama_bin
+        result = subprocess.run([ollama_bin, "list"], capture_output=True, text=True, timeout=10)
+        lines = result.stdout.strip().split("\n")[1:]  # skip header
+        models = []
+        for line in lines:
+            parts = line.split()
+            if parts:
+                models.append({"name": parts[0], "size": parts[2] + " " + parts[3] if len(parts) > 3 else ""})
+        return jsonify({"ok": True, "models": models})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/reminders", methods=["GET"])
+def get_reminders():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    from scheduler import list_reminders
+    return jsonify({"ok": True, "reminders": list_reminders()})
+
+
+@app.route("/api/reminders", methods=["POST"])
+def set_reminder():
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    data = request.json or {}
+    text = data.get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "No text provided"}), 400
+    from scheduler import parse_reminder, add_reminder
+    parsed = parse_reminder(text)
+    if not parsed:
+        return jsonify({"ok": False, "error": "Could not parse reminder"}), 400
+    rid = add_reminder(parsed["message"], parsed["fire_at"], parsed.get("recur"))
+    return jsonify({"ok": True, "id": rid, "message": parsed["message"], "fire_at": parsed["fire_at"].isoformat()})
+
+
+@app.route("/api/reminders/<rid>", methods=["DELETE"])
+def delete_reminder(rid):
+    from scheduler import cancel_reminder
+    ok = cancel_reminder(rid)
+    return jsonify({"ok": ok})
+
 
 @app.route("/api/cleanup/run", methods=["POST"])
 def run_cleanup():
@@ -181,6 +271,26 @@ def run_pruning():
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port = int(os.getenv("API_PORT", "5050"))
+    import socket
+
+    def find_free_port(start: int, max_tries: int = 10) -> int:
+        for p in range(start, start + max_tries):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("", p))
+                    return p
+                except OSError:
+                    continue
+        raise RuntimeError(f"No free port found starting at {start}")
+
+    base_port = int(os.getenv("API_PORT", "5055"))
+    port = find_free_port(base_port)
+    if port != base_port:
+        print(f"[Vespera API] Port {base_port} in use — using {port} instead.")
+        print(f"[Vespera API] Tip: set API_PORT={port} in your .env to make this permanent.")
+
+    # Write actual port to a file so other components can find it
+    (Path(__file__).parent / ".port").write_text(str(port))
+
     print(f"[Vespera API] Running on http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -1,0 +1,16 @@
+[Unit]
+Description=Vespera Telegram Bot
+After=network.target vespera-api.service
+Wants=vespera-api.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/vespera
+ExecStart=/usr/bin/python3 telegram_bot.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

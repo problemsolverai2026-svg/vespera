@@ -1,0 +1,16 @@
+[Unit]
+Description=Vespera API Server
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/vespera
+ExecStart=/usr/bin/python3 api.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=KMP_DUPLICATE_LIB_OK=TRUE
+
+[Install]
+WantedBy=default.target

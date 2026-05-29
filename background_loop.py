@@ -10,7 +10,8 @@ import json
 import time
 import random
 import requests
-from config import get_component, VENICE_API_KEY, VENICE_SEARCH_URL, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
+from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
+from web_search import search as _web_search
 from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_stats
 
 _cfg = get_component("background_loop")
@@ -59,16 +60,9 @@ def call_local(prompt: str) -> str | None:
 
 
 def web_search(query: str) -> str | None:
-    if not VENICE_API_KEY:
-        print("[BackgroundLoop] No Venice API key — skipping web search")
-        return None
     try:
-        resp = requests.post(VENICE_SEARCH_URL,
-            headers={"Authorization": f"Bearer {VENICE_API_KEY}"},
-            json={"query": query, "limit": 3}, timeout=15)
-        resp.raise_for_status()
-        snippets = [r.get("snippet","") for r in resp.json().get("results",[])[:3] if r.get("snippet")]
-        return " ".join(snippets)[:500] or None
+        result = _web_search(query)
+        return result[:500] if result else None
     except Exception as e:
         print(f"[BackgroundLoop] Search error: {e}")
         return None

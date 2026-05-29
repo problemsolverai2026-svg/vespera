@@ -1,0 +1,3 @@
+#!/bin/zsh
+launchctl unload ~/Library/LaunchAgents/com.rook.vespera.plist 2>/dev/null
+echo "Vespera stopped."
