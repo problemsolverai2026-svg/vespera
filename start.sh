@@ -9,6 +9,27 @@ UI_DIR="${VESPERA_UI_DIR:-$SCRIPT_DIR/../vespera-memory-hub}"
 
 echo "Starting Vespera..."
 
+# Check Python3
+if ! command -v python3 &>/dev/null; then
+    echo "❌ Python3 not found. Install it from https://python.org"
+    exit 1
+fi
+
+# Check Ollama
+if ! curl -s http://localhost:11434 &>/dev/null; then
+    echo "⚠️  Ollama is not running. Start Ollama first, then run ./start.sh"
+    echo "   Download: https://ollama.ai"
+    exit 1
+fi
+
+# Check .env exists
+if [ ! -f "$SCRIPT_DIR/.env" ]; then
+    echo "⚠️  No .env file found. Creating one from .env.example..."
+    cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+    echo "   Edit $SCRIPT_DIR/.env to add your API keys, then run ./start.sh again."
+    exit 1
+fi
+
 # Start API in background
 python3 "$SCRIPT_DIR/api.py" &
 API_PID=$!
@@ -44,7 +65,15 @@ if [ -d "$UI_DIR" ]; then
     sleep 3
     echo ""
     echo "✅ Vespera is running!"
-    echo "   Open your browser: http://localhost:3055"
+    echo "   Web UI: http://localhost:3055"
+    echo "   API:    http://localhost:$API_PORT"
+    echo ""
+    echo "   Press Ctrl+C to stop everything."
+else
+    echo ""
+    echo "✅ Vespera is running!"
+    echo "   API: http://localhost:$API_PORT"
+    echo "   (No web UI found — skipping. See README for UI setup.)"
     echo ""
     echo "   Press Ctrl+C to stop everything."
 fi

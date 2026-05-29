@@ -251,7 +251,57 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
         except Exception as e:
             return f"[Cloud error: {e}]"
 
-    return f"[Cloud provider '{CLOUD_PROVIDER}' not yet implemented]"
+    # Groq (OpenAI-compatible)
+    if CLOUD_PROVIDER == "groq":
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {CLOUD_API_KEY}"},
+                json={
+                    "model": CLOUD_MODEL or "llama3-8b-8192",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1024,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return f"[Cloud error: {e}]"
+
+    # OpenAI
+    if CLOUD_PROVIDER == "openai":
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {CLOUD_API_KEY}"},
+                json={
+                    "model": CLOUD_MODEL or "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1024,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            return f"[Cloud error: {e}]"
+
+    # Gemini
+    if CLOUD_PROVIDER == "gemini":
+        try:
+            model = CLOUD_MODEL or "gemini-1.5-flash"
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={CLOUD_API_KEY}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            return f"[Cloud error: {e}]"
+
+    return f"[Cloud provider '{CLOUD_PROVIDER}' not supported. Use: claude, groq, openai, gemini, venice]"
 
 
 # ─────────────────────────────────────────────

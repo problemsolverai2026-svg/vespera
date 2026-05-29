@@ -34,11 +34,11 @@ Respond in JSON only:
 def call_local(prompt: str) -> str | None:
     try:
         resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+            "model": OLLAMA_MODEL, "messages": [{"role": "user", "content": prompt}], "stream": False,
             "options": {"temperature": 0.1}
         }, timeout=60)
         resp.raise_for_status()
-        return resp.json().get("response", "").strip()
+        data = resp.json(); return (data.get("message", {}).get("content") or data.get("response", "")).strip()
     except Exception as e:
         print(f"[CleanupCrew] Model error: {e}")
         return None

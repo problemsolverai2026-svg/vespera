@@ -135,12 +135,8 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
             return False
 
         next_layer = LAYERS[current_idx + 1]
-        updates = {"layer": next_layer, "updated_at": _now()}
-        if new_trust_score is not None:
-            updates["trust_score"] = new_trust_score
-
         conn.execute(
-            f"UPDATE memories SET layer = ?, trust_score = COALESCE(?, trust_score), updated_at = ? WHERE id = ?",
+            "UPDATE memories SET layer = ?, trust_score = COALESCE(?, trust_score), updated_at = ? WHERE id = ?",
             (next_layer, new_trust_score, _now(), memory_id),
         )
         print(f"[Vespera] Promoted {memory_id}: {current} → {next_layer}")

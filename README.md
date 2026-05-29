@@ -12,7 +12,7 @@ No subscription. No monthly fee. Just your own computer and an optional API key.
 - Texts you reminders to your phone via Telegram
 - Talks back with a voice response
 - Thinks in the background 24/7 using a local AI model
-- Hands off complex questions to Claude (if you add an API key)
+- Hands off complex questions to a cloud AI (if you add an API key)
 
 ---
 
@@ -40,7 +40,7 @@ Go to [ollama.ai](https://ollama.ai) and download Ollama for your system. Instal
 
 Then download the AI model (this takes a few minutes):
 ```bash
-ollama pull mistral:7b
+ollama pull qwen2.5:14b
 ```
 
 ### Step 2 — Download Vespera
@@ -97,6 +97,10 @@ If port 3055 or 5055 is already in use on your machine, Vespera automatically pi
 
 **macOS:**
 ```bash
+# First edit each .plist file in the launchagents/ folder
+# and replace REPLACE_WITH_YOUR_PATH with the full path to your vespera folder
+# Example: /Users/yourname/vespera
+
 cp launchagents/*.plist ~/Library/LaunchAgents/
 for f in ~/Library/LaunchAgents/com.vespera.*.plist; do launchctl load "$f"; done
 ```
@@ -133,7 +137,7 @@ Local model scores complexity
      ↓
 Simple question?  → Local model answers (free, instant)
 News/current?     → Web search → Local model summarizes
-Complex?          → Claude answers (uses API key)
+Complex?          → Cloud AI answers (uses API key)
      ↓
 Response + Voice
 ```
@@ -149,7 +153,7 @@ Memory is saved to a local SQLite database. The background loop thinks quietly e
 | Chat | ✅ (local model) |
 | Web search | ✅ (DuckDuckGo) |
 | Memory | ✅ (fully local) |
-| File/shell tools | ✅ (fully local) |
+| File/shell tools | ✅ (shell off by default — enable in .env) |
 | TTS voice | ✅ (edge-tts or kokoro-onnx) |
 | Reminders | ✅ (fully local) |
 | Telegram | ✅ (free bot token) |
