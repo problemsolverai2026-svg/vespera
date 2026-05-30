@@ -1,12 +1,13 @@
 """
 Vespera Utilities
 -----------------
-Shared helpers used across components.
+Shared helpers: logging setup and robust JSON parsing.
 """
 
+import json
 import logging
 import os
-from pathlib import Path
+import re
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -26,9 +27,6 @@ def get_logger(name: str) -> logging.Logger:
     logger.setLevel(getattr(logging, level, logging.INFO))
     return logger
 
-import json
-import re
-
 
 def parse_json_response(raw: str) -> dict | None:
     """
@@ -37,15 +35,15 @@ def parse_json_response(raw: str) -> dict | None:
     Handles:
     - Plain JSON: {"key": "value"}
     - Markdown fences: ```json\\n{...}\\n```
-    - JSON buried in prose: "Here is the result: {...} Hope that helps!"
-    - Nested braces inside strings (uses last } not first)
+    - JSON buried in prose: "Here is the result: {...}"
+    - Nested braces (bracket-counter, not naive find/rfind)
 
     Returns None if no valid JSON object found.
     """
     if not raw:
         return None
 
-    # 1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+    # 1. Strip markdown code fences
     fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     if fence_match:
         try:
@@ -59,7 +57,7 @@ def parse_json_response(raw: str) -> dict | None:
     except json.JSONDecodeError:
         pass
 
-    # 3. Find the outermost { ... } span using a bracket counter
+    # 3. Find the outermost { ... } using a bracket counter
     start = raw.find("{")
     if start == -1:
         return None

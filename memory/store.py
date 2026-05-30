@@ -135,7 +135,7 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
         current_idx = LAYER_ORDER[current]
 
         if current_idx >= len(LAYERS) - 1:
-            print(f"[Vespera] Memory {memory_id} is already at core layer.")
+            log.debug("Memory %s is already at core layer.", memory_id)
             return False
 
         next_layer = LAYERS[current_idx + 1]
@@ -143,7 +143,7 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
             "UPDATE memories SET layer = ?, trust_score = COALESCE(?, trust_score), updated_at = ? WHERE id = ?",
             (next_layer, new_trust_score, _now(), memory_id),
         )
-        print(f"[Vespera] Promoted {memory_id}: {current} → {next_layer}")
+        log.info("Promoted %s: %s → %s", memory_id[:8], current, next_layer)
         return True
 
 
@@ -168,7 +168,7 @@ def prune_memory(memory_id: str, reason: str, pruned_by: str = "cleanup_crew"):
             """,
             (str(uuid.uuid4()), memory_id, reason, pruned_by, _now(), row["content"]),
         )
-        print(f"[Vespera] Pruned {memory_id} ({pruned_by}): {reason}")
+        log.info("Pruned %s (%s): %s", memory_id[:8], pruned_by, reason)
 
 
 # ─────────────────────────────────────────────
@@ -293,11 +293,11 @@ if __name__ == "__main__":
     add_conversation("assistant", "Lightly cycle through recent context to maintain continuity.")
 
     # Print stats
-    print("\n[Vespera] Memory store stats:")
+    log.info("Memory store stats:")
     for k, v in get_stats().items():
-        print(f"  {k}: {v}")
+        log.info("  %s: %s", k, v)
 
     # Show linked memories
-    print(f"\n[Vespera] Memories linked to m1:")
+    log.info("Memories linked to m1:")
     for m in get_linked_memories(m1):
-        print(f"  [{m['relationship']}] {m['content'][:60]}...")
+        log.info("  [%s] %s...", m['relationship'], m['content'][:60])

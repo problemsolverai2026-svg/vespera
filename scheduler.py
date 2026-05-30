@@ -197,7 +197,7 @@ Rules:
             "recur":    data.get("recur"),
         }
     except Exception as e:
-        print(f"[Scheduler] Parse error: {e} | raw: {raw[:100]}")
+        log.error("Parse error: %s | raw: %s", e, raw[:100])
         return None
 
 
@@ -260,6 +260,6 @@ if __name__ == "__main__":
     # Quick test
     init_scheduler_db()
     reminders = list_reminders()
-    print(f"Active reminders: {len(reminders)}")
+    log.info("Active reminders: %d", len(reminders))
     for r in reminders:
-        print(f"  [{r['id']}] {r['message']} — {r['fire_at']}")
+        log.info("  [%s] %s — %s", r['id'], r['message'], r['fire_at'])

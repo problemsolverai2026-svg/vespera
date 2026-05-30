@@ -155,7 +155,7 @@ __all__ = ["TOOL_DEFINITIONS", "run_tool"]
 # ─────────────────────────────────────────────
 
 def run_tool(name: str, inputs: dict) -> str:
-    print(f"[Tools] Running: {name}({list(inputs.keys())})")
+    pass  # tool dispatch — logging handled by callers
     if name == "shell":
         return run_shell(inputs.get("command", ""), inputs.get("workdir"))
     if name == "read_file":
