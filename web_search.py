@@ -81,6 +81,23 @@ def _search_venice(query: str) -> list[dict]:
 # MAIN ENTRY — auto-selects provider
 # ─────────────────────────────────────────────
 
+# Phrases that look like prompt injection attempts
+_INJECTION_PATTERNS = [
+    "ignore previous", "ignore all previous", "disregard previous",
+    "new instructions", "system prompt", "you are now", "act as",
+    "forget everything", "override", "jailbreak",
+]
+
+
+def _sanitize_result(text: str) -> str:
+    """Strip content that looks like prompt injection from a search result."""
+    lower = text.lower()
+    for pattern in _INJECTION_PATTERNS:
+        if pattern in lower:
+            return "[result removed — possible prompt injection]"
+    return text
+
+
 def search(query: str) -> str:
     """
     Search the web and return a formatted string of results.
@@ -109,8 +126,10 @@ def search(query: str) -> str:
     log.info("%s — %d results for: %s", provider, len(results), query)
     lines = []
     for i, r in enumerate(results, 1):
-        lines.append(f"{i}. {r['title']}")
-        lines.append(f"   {r['snippet']}")
+        title   = _sanitize_result(r['title'][:200])
+        snippet = _sanitize_result(r['snippet'][:500])
+        lines.append(f"{i}. {title}")
+        lines.append(f"   {snippet}")
         lines.append(f"   {r['url']}")
     return "\n".join(lines)
 

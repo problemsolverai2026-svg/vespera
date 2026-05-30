@@ -5,6 +5,16 @@ No subscription. No monthly fee. Just your own computer — and an optional API 
 
 ---
 
+## Why This Exists
+
+Most AI assistants have a memory problem: every conversation starts from scratch. They don't know your habits, your projects, or what you talked about yesterday.
+
+Vespera solves this by running a persistent memory system on your own machine, 24/7. It thinks quietly in the background, builds context over time, and is still there — knowing what it knows — the next time you talk to it.
+
+It's local-first by design. Your data stays on your machine. Cloud AI is optional and only used when a question is genuinely too complex for the local model.
+
+---
+
 ## What It Does
 
 - **Remembers your conversations** — even after restarts, across sessions
@@ -222,15 +232,42 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 
 ---
 
+## Security
+
+- **Shell execution** is disabled by default (`VESPERA_ALLOW_SHELL=false`). When enabled, the AI can run shell commands on your machine — only enable this if you understand the risk.
+- **File access** is restricted to configured paths only (`VESPERA_ALLOW_PATHS`).
+- **API access** can be token-protected via `VESPERA_API_TOKEN`.
+- **Telegram** can be restricted to specific user IDs via `TELEGRAM_ALLOWED_USERS`.
+- **Web search results** are sanitized before being fed into model prompts to reduce prompt injection risk.
+- **Cloud APIs** only receive your message and minimal memory context — your full memory database never leaves your machine.
+
+---
+
+## Known Limitations
+
+- **Windows is untested** — may work but not supported yet
+- **Requires Ollama** — no cloud-only mode without a local model
+- **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
+- **UI is basic** — model selector, API key page, and memory visualization are planned but not built
+- **No automated tests** — contributions welcome
+
+---
+
+## Roadmap
+
+- [ ] Docker / docker-compose support
+- [ ] Windows compatibility
+- [ ] Discord and Signal bot support
+- [ ] UI: model selector, API key management, memory graph
+- [ ] Automated test suite
+- [ ] Long-run stability hardening
+- [ ] Multi-user support
+
+---
+
 ## Contributing
 
-Pull requests welcome. Open an issue first for major changes.
-
-Most needed:
-- Docker / docker-compose support
-- Windows compatibility
-- Additional messaging platforms (Discord, Signal)
-- UI improvements (model selector, API key management page)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for where to start, what needs help, and how to submit changes.
 
 ---
 
