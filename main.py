@@ -10,9 +10,12 @@ For manual use, run: ./start.sh
 """
 
 import sys
+import os
 import time
 import threading
 import signal
+import atexit
+from pathlib import Path
 from utils import get_logger
 
 log = get_logger("vespera")
@@ -153,6 +156,28 @@ def run_test():
 # ─────────────────────────────────────────────
 
 def main():
+    # ── PID lock — prevent duplicate instances ──────────────────────────
+    pid_file = Path(__file__).parent / ".main.pid"
+
+    def _pid_running(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+    if pid_file.exists():
+        try:
+            existing = int(pid_file.read_text().strip())
+            if _pid_running(existing):
+                log.error("Already running (PID %d). Exiting.", existing)
+                raise SystemExit(0)
+        except ValueError:
+            pass
+    pid_file.write_text(str(os.getpid()))
+    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+    # ───────────────────────────────────────────────────────────────────
+
     init_db()
 
     if "--test" in sys.argv:

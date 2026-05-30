@@ -53,6 +53,12 @@ def require_auth():
 # STATUS
 # ─────────────────────────────────────────────
 
+@app.route("/health")
+def health():
+    """Lightweight liveness check for start.sh readiness polling."""
+    return jsonify({"ok": True})
+
+
 @app.route("/api/status")
 def status():
     auth_err = require_auth()

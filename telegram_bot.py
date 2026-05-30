@@ -134,17 +134,33 @@ def run():
             except Exception as e:
                 log.warning(f"Voice send failed: {e}")
 
-    # Register reminder delivery callback and run scheduler in this process
-    # so Telegram reminders are delivered even when running as a separate process
+    # Register reminder delivery callback.
+    # Only start the scheduler here if main.py is NOT already running
+    # (avoids duplicate scheduler when both processes are up together).
     import threading
     from scheduler import register_callback, run as scheduler_run
     register_callback(send_reminder)
-    _sched_shutdown = threading.Event()
-    _sched_thread = threading.Thread(
-        target=scheduler_run, args=(_sched_shutdown,), daemon=True, name="Scheduler"
-    )
-    _sched_thread.start()
-    log.info("Scheduler started in background thread.")
+
+    _main_pid_file = Path(__file__).parent / ".main.pid"
+    def _main_running() -> bool:
+        if not _main_pid_file.exists():
+            return False
+        try:
+            pid = int(_main_pid_file.read_text().strip())
+            os.kill(pid, 0)
+            return True
+        except Exception:
+            return False
+
+    if not _main_running():
+        _sched_shutdown = threading.Event()
+        _sched_thread = threading.Thread(
+            target=scheduler_run, args=(_sched_shutdown,), daemon=True, name="Scheduler"
+        )
+        _sched_thread.start()
+        log.info("Scheduler started in background thread (main.py not running).")
+    else:
+        log.info("main.py is running — skipping local scheduler to avoid duplicates.")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
