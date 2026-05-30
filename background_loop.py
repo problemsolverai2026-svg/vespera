@@ -90,7 +90,7 @@ def think() -> str | None:
         result = _web_search(question)
         if result:
             thought = call_local(WEB_SEARCH_SUMMARY_PROMPT.format(question=question, result=result[:500]))
-            return f"[web search] {thought}" if thought else None
+            return f"[web search] {thought}"[:MAX_THOUGHT_LENGTH] if thought else None
         return None
 
     if "NOTHING_NEW" in raw:

@@ -50,7 +50,8 @@ init_db()
 
 def require_auth():
     """Returns error response if token required and missing/wrong. Returns None if OK."""
-    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else auth_header.strip()
     if not check_api_token(token):
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     return None
@@ -231,9 +232,10 @@ def chat():
     try:
         result = handle_message(message)
     except Exception as e:
-        err_text = f"[Internal error: {e}]"
-        add_conversation(role="assistant", content=err_text)
-        return jsonify({"ok": False, "error": err_text}), 500
+        import traceback
+        app.logger.error("chat() exception: %s", traceback.format_exc())
+        add_conversation(role="assistant", content="[Internal error]")
+        return jsonify({"ok": False, "error": "Internal server error"}), 500
     add_conversation(role="assistant", content=result.get("response", ""))
 
     response_text = result.get("response", "")

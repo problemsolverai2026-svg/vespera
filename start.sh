@@ -75,7 +75,7 @@ python3 "$SCRIPT_DIR/main.py" &
 MAIN_PID=$!
 
 # Start Telegram bot if token is set
-if grep -q "^TELEGRAM_BOT_TOKEN=" "$SCRIPT_DIR/.env" 2>/dev/null; then
+if grep -Eq "^TELEGRAM_BOT_TOKEN=.+" "$SCRIPT_DIR/.env" 2>/dev/null; then
     python3 "$SCRIPT_DIR/telegram_bot.py" &
     TEL_PID=$!
     echo "Telegram bot started."

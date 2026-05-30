@@ -26,7 +26,7 @@ HOME = str(Path.home())
 # SETTINGS
 # ─────────────────────────────────────────────
 
-# Shell execution — on by default, set false to disable
+# Shell execution — off by default, set VESPERA_ALLOW_SHELL=true to enable
 ALLOW_SHELL = os.getenv("VESPERA_ALLOW_SHELL", "false").lower() == "true"
 
 # Allowed file paths — defaults to home directory

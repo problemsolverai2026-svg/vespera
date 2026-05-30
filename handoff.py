@@ -240,14 +240,21 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                                 "content": result,
                             })
                     if not tool_results:
-                        # stop_reason was tool_use but no tool_use blocks found — break to avoid API error
                         log.warning("Claude stop_reason=tool_use but no tool_use blocks in response")
-                        break
+                        for block in content_blocks:
+                            if block.get("type") == "text":
+                                return block["text"]
+                        return "[Error: unexpected stop — tool_use signaled but no tool blocks found]"
                     messages.append({"role": "user", "content": tool_results})
                     continue
 
-                break  # unknown stop reason
-            return "[Error: tool loop exhausted]"
+                # Unknown stop reason — return whatever text is present, else descriptive error
+                for block in (data.get("content") or []):
+                    if block.get("type") == "text":
+                        return block["text"]
+                log.warning("Claude unexpected stop_reason=%r — content: %s", stop_reason, data.get("content"))
+                return f"[Cloud error: unexpected stop_reason '{stop_reason}']"
+            return "[Error: tool call loop exhausted after 10 iterations]"
         except Exception as e:
             return f"[Cloud error: {e}]"
 
@@ -308,9 +315,10 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
     # Gemini
     if CLOUD_PROVIDER == "gemini":
         try:
+            from urllib.parse import quote
             model = CLOUD_MODEL or "gemini-1.5-flash"
             resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model, safe='')}:generateContent",
                 headers={"x-goog-api-key": CLOUD_API_KEY},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
