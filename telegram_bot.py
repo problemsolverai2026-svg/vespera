@@ -49,8 +49,9 @@ try:
 except ImportError:
     pass
 
-BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "")
-ALLOWED_USERS = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+BOT_TOKEN          = os.getenv("TELEGRAM_BOT_TOKEN", "")
+ALLOWED_USERS      = os.getenv("TELEGRAM_ALLOWED_USERS", "")
+VESPERA_API_TOKEN  = os.getenv("VESPERA_API_TOKEN", "")
 
 # Auto-detect API port from .port file written by api.py on startup
 def _get_api_url():
@@ -76,7 +77,10 @@ def is_allowed(user_id: int) -> bool:
 def chat(message: str) -> dict:
     try:
         url = _get_api_url()
-        resp = requests.post(f"{url}/api/chat", json={"message": message, "tts": True}, timeout=60)
+        headers = {}
+        if VESPERA_API_TOKEN:
+            headers["Authorization"] = f"Bearer {VESPERA_API_TOKEN}"
+        resp = requests.post(f"{url}/api/chat", json={"message": message, "tts": True}, headers=headers, timeout=60)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:

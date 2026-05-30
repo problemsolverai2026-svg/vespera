@@ -10,7 +10,7 @@ import threading
 import requests
 from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory
-from utils import get_logger, parse_json_response
+from utils import get_logger, parse_json_response, _sanitize
 
 log = get_logger("cleanup_crew")
 
@@ -51,7 +51,7 @@ def call_local(prompt: str) -> str | None:
 
 
 def review_memory(memory: dict) -> tuple[str, str]:
-    raw = call_local(CLEANUP_PROMPT.format(content=memory["content"]))
+    raw = call_local(CLEANUP_PROMPT.format(content=_sanitize(memory["content"], 500)))
     if not raw:
         return "keep", "model unavailable"
     result = parse_json_response(raw)

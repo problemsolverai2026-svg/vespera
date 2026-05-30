@@ -163,7 +163,11 @@ def score_complexity(message: str) -> tuple[float, str, bool]:
     result = parse_json_response(raw)
     if not result:
         return 0.5, "unparseable", False
-    return float(result.get("complexity", 0.5)), result.get("reason", ""), bool(result.get("needs_search", False))
+    try:
+        complexity_val = float(result.get("complexity", 0.5))
+    except (ValueError, TypeError):
+        complexity_val = 0.5
+    return complexity_val, result.get("reason", ""), bool(result.get("needs_search", False))
 
 
 # ─────────────────────────────────────────────
@@ -342,8 +346,8 @@ def handle_message(message: str) -> dict:
         if results:
             from datetime import datetime
             today = datetime.now().strftime("%A, %B %d, %Y")
-            cloud_msg = f"Today is {today}.\n\nUser question: {message}\n\nSearch results:\n{results}"
-            response = respond_cloud(cloud_msg, memories, recent)
+            formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results, message=message)
+            response = respond_cloud(formatted_prompt, memories, recent)
             return {"response": response, "handled_by": "search+cloud", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local

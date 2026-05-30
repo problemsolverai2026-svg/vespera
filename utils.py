@@ -10,6 +10,34 @@ import os
 import re
 
 
+# ─────────────────────────────────────────────
+# INJECTION SANITIZER (shared with background workers)
+# ─────────────────────────────────────────────
+
+_INJECTION_RE = re.compile(
+    r"\b(?:"
+    r"ignore\s+(?:all\s+)?previous"
+    r"|disregard\s+previous"
+    r"|new\s+instructions"
+    r"|system\s+prompt"
+    r"|you\s+are\s+now"
+    r"|act\s+as\b"
+    r"|forget\s+everything"
+    r"|override\b"
+    r"|jailbreak"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _sanitize(text: str, max_len: int) -> str:
+    """Truncate and strip potential injection attempts from memory/conversation content."""
+    truncated = text[:max_len]
+    if _INJECTION_RE.search(truncated):
+        return "[content removed — possible injection attempt]"
+    return truncated
+
+
 def get_logger(name: str) -> logging.Logger:
     """
     Return a module-level logger with consistent format.

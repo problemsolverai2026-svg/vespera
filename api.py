@@ -115,7 +115,7 @@ def update_component(name):
 
     # Sanitize values — strip newlines to prevent env injection
     def _safe_value(v: str) -> str:
-        return str(v).replace("\n", "").replace("\r", "").strip()
+        return str(v).replace("\n", "").replace("\r", "").replace("#", "").strip()
 
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 

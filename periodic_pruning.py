@@ -10,7 +10,7 @@ import threading
 import requests
 from config import get_component, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory
-from utils import get_logger, parse_json_response
+from utils import get_logger, parse_json_response, _sanitize
 
 log = get_logger("periodic_pruning")
 
@@ -57,11 +57,11 @@ def call_local(prompt: str) -> str | None:
 
 def get_core_context() -> str:
     core = get_memories(layer="core", limit=10)
-    return "\n".join([f"- {m['content'][:150]}" for m in core]) if core else "No core memories yet."
+    return "\n".join([f"- {_sanitize(m['content'], 150)}" for m in core]) if core else "No core memories yet."
 
 
 def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
-    raw = call_local(PRUNING_PROMPT.format(content=memory["content"], core_memories=core_context))
+    raw = call_local(PRUNING_PROMPT.format(content=_sanitize(memory["content"], 500), core_memories=core_context))
     if not raw:
         return "keep", "model unavailable"
     result = parse_json_response(raw)

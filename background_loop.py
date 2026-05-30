@@ -8,6 +8,7 @@ Uses web search for technical gaps instead of calling the cloud model.
 
 import os
 import time
+import threading
 import psutil
 import requests
 from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
@@ -15,7 +16,7 @@ from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
 CPU_THROTTLE_PERCENT = float(os.getenv("VESPERA_CPU_LIMIT", "80"))  # skip run if CPU above this %
 from web_search import search as _web_search
 from memory.store import init_db, add_memory, get_memories, get_recent_conversations
-from utils import get_logger
+from utils import get_logger, _sanitize
 
 log = get_logger("background_loop")
 
@@ -68,11 +69,11 @@ def call_local(prompt: str) -> str | None:
 def think() -> str | None:
     convs = get_recent_conversations(limit=20)
     conversation = "\n".join(
-        [f"{c['role'].upper()}: {c['content'][:200]}" for c in reversed(convs[:4])]
+        [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs[:4])]
     ) if convs else "No conversations yet."
 
     mems = get_memories(layer="validated", limit=5) or get_memories(layer="core", limit=5)
-    memories = "\n".join([f"- {m['content'][:150]}" for m in mems]) if mems else "No memories yet."
+    memories = "\n".join([f"- {_sanitize(m['content'], 150)}" for m in mems]) if mems else "No memories yet."
 
     raw = call_local(BACKGROUND_PROMPT.format(
         conversation=conversation, memories=memories, max_length=MAX_THOUGHT_LENGTH
@@ -99,10 +100,15 @@ def think() -> str | None:
     return raw[:MAX_THOUGHT_LENGTH]
 
 
-def run_loop():
+_shutdown = threading.Event()
+
+def run_loop(shutdown_event: threading.Event = None):
+    global _shutdown
+    if shutdown_event:
+        _shutdown = shutdown_event
     init_db()
     log.info("Started — model: %s — every %ss — CPU limit: %s%%", OLLAMA_MODEL, RUN_INTERVAL, CPU_THROTTLE_PERCENT)
-    while True:
+    while not _shutdown.is_set():
         try:
             cpu = psutil.cpu_percent(interval=1)
             if cpu > CPU_THROTTLE_PERCENT:
@@ -114,7 +120,8 @@ def run_loop():
                     log.info("Saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
             log.error("Error: %s", e)
-        time.sleep(RUN_INTERVAL)
+        _shutdown.wait(RUN_INTERVAL)
+    log.info("Stopped.")
 
 
 if __name__ == "__main__":
