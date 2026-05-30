@@ -74,7 +74,8 @@ def is_allowed(user_id: int) -> bool:
 
 def chat(message: str) -> dict:
     try:
-        resp = requests.post(f"{API_URL}/api/chat", json={"message": message, "tts": True}, timeout=60)
+        url = _get_api_url()
+        resp = requests.post(f"{url}/api/chat", json={"message": message, "tts": True}, timeout=60)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:

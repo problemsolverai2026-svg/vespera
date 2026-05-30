@@ -86,6 +86,8 @@ def list_components():
 @app.route("/api/components/<name>", methods=["POST"])
 def update_component(name):
     """Update a component's model or API key. Writes to .env file."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
     if name not in COMPONENTS:
         return jsonify({"ok": False, "error": f"Unknown component: {name}"}), 404
 
