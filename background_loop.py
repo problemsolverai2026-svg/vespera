@@ -82,6 +82,9 @@ def think() -> str | None:
 
     if raw.startswith("SEARCH:"):
         question = raw[7:].strip()
+        if not question:
+            log.debug("Empty SEARCH: query from model — skipping.")
+            return None
         log.info("Web search: %s", question[:80])
         result = _web_search(question)
         if result:

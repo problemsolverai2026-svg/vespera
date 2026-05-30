@@ -13,6 +13,7 @@ Handle locally if:
   - Local model has clear context from memory
 """
 
+import re
 import requests
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
 from utils import get_logger
@@ -96,18 +97,28 @@ Answer directly based on the search results. Use today's date to determine what 
 # HELPERS
 # ─────────────────────────────────────────────
 
-# Patterns that could hijack model behavior if smuggled via stored memory or conversations
-_INJECTION_PATTERNS = [
-    "ignore previous", "ignore all previous", "disregard previous",
-    "new instructions", "system prompt", "you are now", "act as",
-    "forget everything", "override", "jailbreak",
-]
+# Patterns that could hijack model behavior if smuggled via stored memory or conversations.
+# Use word-boundary regex to avoid false positives on substrings like "interact as" → "act as".
+_INJECTION_RE = re.compile(
+    r"\b(?:"
+    r"ignore\s+(?:all\s+)?previous"
+    r"|disregard\s+previous"
+    r"|new\s+instructions"
+    r"|system\s+prompt"
+    r"|you\s+are\s+now"
+    r"|act\s+as\b"
+    r"|forget\s+everything"
+    r"|override\b"
+    r"|jailbreak"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def _sanitize(text: str, max_len: int) -> str:
     """Truncate and strip potential injection attempts from memory/conversation content."""
     truncated = text[:max_len]
-    if any(p in truncated.lower() for p in _INJECTION_PATTERNS):
+    if _INJECTION_RE.search(truncated):
         return "[content removed — possible injection attempt]"
     return truncated
 

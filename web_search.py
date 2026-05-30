@@ -12,6 +12,7 @@ Users with no API keys get DuckDuckGo automatically.
 """
 
 import os
+import re
 import requests
 from utils import get_logger
 
@@ -81,20 +82,28 @@ def _search_venice(query: str) -> list[dict]:
 # MAIN ENTRY — auto-selects provider
 # ─────────────────────────────────────────────
 
-# Phrases that look like prompt injection attempts
-_INJECTION_PATTERNS = [
-    "ignore previous", "ignore all previous", "disregard previous",
-    "new instructions", "system prompt", "you are now", "act as",
-    "forget everything", "override", "jailbreak",
-]
+# Phrases that look like prompt injection attempts.
+# Use word-boundary regex to avoid false positives on substrings like "interact as" → "act as".
+_INJECTION_RE = re.compile(
+    r"\b(?:"
+    r"ignore\s+(?:all\s+)?previous"
+    r"|disregard\s+previous"
+    r"|new\s+instructions"
+    r"|system\s+prompt"
+    r"|you\s+are\s+now"
+    r"|act\s+as\b"
+    r"|forget\s+everything"
+    r"|override\b"
+    r"|jailbreak"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def _sanitize_result(text: str) -> str:
     """Strip content that looks like prompt injection from a search result."""
-    lower = text.lower()
-    for pattern in _INJECTION_PATTERNS:
-        if pattern in lower:
-            return "[result removed — possible prompt injection]"
+    if _INJECTION_RE.search(text):
+        return "[result removed — possible prompt injection]"
     return text
 
 
