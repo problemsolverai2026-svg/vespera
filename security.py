@@ -83,7 +83,8 @@ def check_api_token(request_token: str) -> bool:
     """Validate API token. Returns True if no token required or token matches."""
     if not API_TOKEN:
         return True
-    return request_token == API_TOKEN
+    import hmac
+    return hmac.compare_digest(request_token.encode(), API_TOKEN.encode())
 
 
 def get_status() -> dict:

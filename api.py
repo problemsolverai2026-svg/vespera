@@ -134,17 +134,24 @@ def update_component(name):
                     return
             env_lines.append(f"{key}={value}\n")
 
-        prefix = name.upper()
+        # Map component name to the env var prefix config.py actually reads
+        _ENV_PREFIX = {
+            "background_loop": "BACKGROUND",
+            "cleanup_crew":    "CLEANUP",
+            "periodic_pruning": "PRUNING",
+            "handoff":         "HANDOFF",
+            "cloud":           "CLOUD",
+        }
+        prefix = _ENV_PREFIX.get(name, name.upper())
         updated = []
 
         if "model" in data:
-            key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
+            key = f"{prefix}_MODEL" if name == "cloud" else f"{prefix}_OLLAMA_MODEL"
             set_env(key, _safe_value(data["model"]))
             updated.append("model")
 
         if "api_key" in data:
-            key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
-            set_env(key, _safe_value(data["api_key"]))
+            set_env(f"{prefix}_API_KEY", _safe_value(data["api_key"]))
             updated.append("api_key")
 
         if "provider" in data and name == "cloud":
@@ -344,8 +351,8 @@ def run_cleanup():
     auth_err = require_auth()
     if auth_err: return auth_err
     from cleanup_crew import run_cleanup as _run
-    _run()
-    return jsonify({"ok": True, "stats": get_stats()})
+    threading.Thread(target=_run, daemon=True, name="manual-cleanup").start()
+    return jsonify({"ok": True, "status": "started"}), 202
 
 
 @app.route("/api/prune/run", methods=["POST"])
@@ -353,8 +360,8 @@ def run_pruning():
     auth_err = require_auth()
     if auth_err: return auth_err
     from periodic_pruning import run_pruning as _run
-    _run()
-    return jsonify({"ok": True, "stats": get_stats()})
+    threading.Thread(target=_run, daemon=True, name="manual-prune").start()
+    return jsonify({"ok": True, "status": "started"}), 202
 
 
 # ─────────────────────────────────────────────

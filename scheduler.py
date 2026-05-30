@@ -195,6 +195,9 @@ Rules:
         fire_at = datetime.fromisoformat(data["fire_at"])
         if fire_at.tzinfo is None:
             fire_at = fire_at.replace(tzinfo=ZoneInfo(TIMEZONE))
+        if fire_at <= datetime.now(tz=ZoneInfo(TIMEZONE)):
+            log.error("Parsed fire_at is in the past: %s", fire_at)
+            return None
         return {
             "message":  data.get("message", text),
             "fire_at":  fire_at,

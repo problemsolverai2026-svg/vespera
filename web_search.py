@@ -104,21 +104,20 @@ def search(query: str) -> str:
     Auto-selects the best available provider.
     Returns empty string if all providers fail.
     """
+    providers = []
     if VENICE_API_KEY:
-        provider = "Venice"
-        results = _search_venice(query)
-    elif BRAVE_API_KEY:
-        provider = "Brave"
-        results = _search_brave(query)
-    else:
-        provider = "DuckDuckGo"
-        results = _search_duckduckgo(query)
+        providers.append(("Venice", _search_venice))
+    if BRAVE_API_KEY:
+        providers.append(("Brave", _search_brave))
+    providers.append(("DuckDuckGo", _search_duckduckgo))
 
-    if not results:
-        # Fallback to DuckDuckGo if preferred provider failed
-        if provider != "DuckDuckGo":
-            log.warning("%s failed, falling back to DuckDuckGo", provider)
-            results = _search_duckduckgo(query)
+    provider = "none"
+    results = []
+    for provider, fn in providers:
+        results = fn(query)
+        if results:
+            break
+        log.warning("%s returned no results, trying next provider", provider)
 
     if not results:
         return ""

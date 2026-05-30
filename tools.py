@@ -101,9 +101,14 @@ def _path_allowed(path: str) -> bool:
 # TOOL RUNNERS
 # ─────────────────────────────────────────────
 
+_SHELL_BLOCKLIST = [";", "&&", "||", "|", "$(", "`", ">", ">>", "<(", "2>"]
+
 def run_shell(command: str, workdir: str = None) -> str:
     if not ALLOW_SHELL:
         return "Error: shell execution is disabled. Set VESPERA_ALLOW_SHELL=true in .env to enable."
+    for token in _SHELL_BLOCKLIST:
+        if token in command:
+            return f"Error: command contains disallowed operator '{token}'. Use simple commands only."
     cwd = HOME
     if workdir:
         resolved_wd = str(Path(workdir.replace("~", HOME, 1)).expanduser())
@@ -129,12 +134,19 @@ def run_shell(command: str, workdir: str = None) -> str:
         return f"Error: {e}"
 
 
+_MAX_READ_BYTES  = 512 * 1024   # 512 KB
+_MAX_WRITE_BYTES = 1 * 1024 * 1024  # 1 MB
+
 def run_read_file(path: str) -> str:
     resolved = path.replace("~", HOME)
     if not _path_allowed(resolved):
         return f"Error: path not allowed: {resolved}"
     try:
-        return Path(resolved).read_text(encoding="utf-8", errors="replace")
+        p = Path(resolved)
+        size = p.stat().st_size
+        if size > _MAX_READ_BYTES:
+            return f"Error: file too large ({size} bytes, max {_MAX_READ_BYTES})."
+        return p.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         return f"Error: file not found: {resolved}"
     except Exception as e:
@@ -145,6 +157,8 @@ def run_write_file(path: str, content: str) -> str:
     resolved = path.replace("~", HOME)
     if not _path_allowed(resolved):
         return f"Error: path not allowed: {resolved}"
+    if len(content.encode("utf-8")) > _MAX_WRITE_BYTES:
+        return f"Error: content too large (max {_MAX_WRITE_BYTES} bytes)."
     try:
         p = Path(resolved)
         p.parent.mkdir(parents=True, exist_ok=True)

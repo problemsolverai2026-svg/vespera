@@ -83,7 +83,7 @@ COMPONENTS = {
 def get_component(name: str) -> dict:
     if name not in COMPONENTS:
         raise ValueError(f"Unknown component: {name}")
-    return COMPONENTS[name]
+    return dict(COMPONENTS[name])  # shallow copy — prevents accidental mutation of global config
 
 # ─────────────────────────────────────────────
 # WEB SEARCH

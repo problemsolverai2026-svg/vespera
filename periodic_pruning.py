@@ -66,7 +66,7 @@ def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
     result = parse_json_response(raw)
     if not result or "decision" not in result:
         return "keep", "unparseable response"
-    decision = result["decision"].lower()
+    decision = result["decision"].strip().lower()
     return (decision if decision in ("promote", "keep", "delete") else "keep"), result.get("reason", "")
 
 

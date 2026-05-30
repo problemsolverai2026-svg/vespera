@@ -298,7 +298,8 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
         try:
             model = CLOUD_MODEL or "gemini-1.5-flash"
             resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={CLOUD_API_KEY}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": CLOUD_API_KEY},
                 json={"contents": [{"parts": [{"text": prompt}]}]},
                 timeout=30,
             )

@@ -75,7 +75,14 @@ def _tts_edge(text: str) -> str | None:
         async def _run():
             c = edge_tts.Communicate(text, EDGE_VOICE)
             await c.save(str(out))
-        asyncio.run(_run())
+        try:
+            loop = asyncio.get_running_loop()
+            # Already inside an event loop — run in thread pool to avoid deadlock
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                pool.submit(asyncio.run, _run()).result()
+        except RuntimeError:
+            asyncio.run(_run())
         log.debug("edge-tts → %s", out.name)
         return str(out)
     except Exception as e:
