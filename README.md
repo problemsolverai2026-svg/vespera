@@ -2,6 +2,7 @@
 **A private, self-hosted AI assistant. Runs on your machine. Nobody else controls it.**
 
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/problemsolverai2026gmailcom)
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
 
 No subscription. No monthly fee. Just your own computer — and an optional API key if you want smarter responses.
 
@@ -249,6 +250,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Telegram** can be restricted to specific user IDs via `TELEGRAM_ALLOWED_USERS`.
 - **Web search results** are sanitized before being fed into model prompts to reduce prompt injection risk.
 - **Cloud APIs** only receive your message and minimal memory context — your full memory database never leaves your machine.
+- **Extensively audited** — 50+ bugs fixed across 13 rounds of parallel Opus + Gemini security review before public release.
 
 ---
 
@@ -258,7 +260,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Requires Ollama** — no cloud-only mode without a local model
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
 - **UI is basic** — model selector, API key page, and memory visualization are planned but not built
-- **No automated tests** — contributions welcome
+- **No automated tests** — unit tests not yet written, though the codebase underwent 13 rounds of parallel AI security audit (50+ issues fixed) before release. Contributions welcome.
 - **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 
 ---
