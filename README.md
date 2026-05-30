@@ -34,68 +34,59 @@ No subscription. No monthly fee. Just your own computer — and an optional API 
 
 ## Installation
 
-### Step 1 — Install Ollama
-Download from [ollama.ai](https://ollama.ai), install, and open it. Then pull the default model:
+### Step 1 — Install the prerequisites
 
-```bash
-ollama pull llama3.2:3b
-```
+- **[Ollama](https://ollama.ai)** — download, install, and open it
+- **[Python 3.10+](https://www.python.org/downloads/)**
+- **[Node.js 18+](https://nodejs.org)**
 
-This is a 2GB model that runs on any machine. If you have more RAM and want better quality:
+### Step 2 — Clone and run setup
 
-```bash
-ollama pull qwen2.5:7b    # ~8GB RAM
-ollama pull qwen2.5:14b   # ~16GB RAM
-```
-
-### Step 2 — Download Vespera
 ```bash
 git clone https://github.com/problemsolverai2026-svg/vespera.git
 cd vespera
+chmod +x setup.sh start.sh
+./setup.sh
 ```
 
-### Step 3 — Install Python dependencies
-```bash
-pip3 install -r requirements.txt
-```
+`setup.sh` handles everything: installs Python and UI dependencies, pulls the default Ollama model, creates your `.env`, and optionally sets up auto-start on boot.
 
-### Step 4 — Configure
-```bash
-cp .env.example .env
-```
+### Step 3 — Start Vespera
 
-Open `.env` and fill in your values. **Minimum required:** nothing. It works out of the box with just Ollama.
-
-**To add Telegram** (text from your phone):
-1. Open Telegram and message **@BotFather**
-2. Send `/newbot` — give it a name and username (must end in `bot`)
-3. BotFather gives you a token — copy it to `TELEGRAM_BOT_TOKEN=` in `.env`
-4. Message **@userinfobot** on Telegram to get your user ID
-5. Add it to `TELEGRAM_ALLOWED_USERS=` in `.env`
-6. To allow multiple people: `TELEGRAM_ALLOWED_USERS=id1,id2`
-
-**To add cloud AI** (smarter responses on complex questions):
-- Groq (free, fast): [console.groq.com](https://console.groq.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=groq`
-- Anthropic Claude: [console.anthropic.com](https://console.anthropic.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=claude`
-
-### Step 5 — Install UI dependencies
-```bash
-cd ui && npm install && cd ..
-```
-
-### Step 6 — Start Vespera
 ```bash
 ./start.sh
 ```
 
-One command starts everything: API, background loop, Telegram bot, and web UI.
+Open your browser to **http://localhost:3055**
 
-Open your browser to: **http://localhost:3055**
+If port 3055 or 5055 is already in use, Vespera automatically picks the next available port.
 
-If port 3055 or 5055 is already in use, Vespera automatically picks the next available port and tells you.
+> **Backend only?** Skip the UI — run `python3 main.py` and `python3 api.py` directly. Telegram and the API still work.
 
-> **No UI?** If you want to run backend-only (no web interface), skip Step 5. Everything still works via Telegram and the API.
+---
 
+## Configuration
+
+Edit `.env` to add optional features. Everything works out of the box with no keys.
+
+**To add Telegram** (text from your phone):
+1. Open Telegram and message **@BotFather**
+2. Send `/newbot` — give it a name and username (must end in `bot`)
+3. Copy the token to `TELEGRAM_BOT_TOKEN=` in `.env`
+4. Message **@userinfobot** on Telegram to get your user ID
+5. Add it to `TELEGRAM_ALLOWED_USERS=` in `.env`
+6. Multiple people: `TELEGRAM_ALLOWED_USERS=id1,id2`
+
+**To add cloud AI** (smarter responses):
+- Groq (free, fast): [console.groq.com](https://console.groq.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=groq`
+- Anthropic Claude: [console.anthropic.com](https://console.anthropic.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=claude`
+
+**Better Ollama model** (if you have the RAM):
+```bash
+ollama pull qwen2.5:7b    # ~8GB RAM — better quality
+ollama pull qwen2.5:14b   # ~16GB RAM — best local quality
+```
+Then set `BACKGROUND_OLLAMA_MODEL=qwen2.5:7b` in `.env`.
 ---
 
 ## Auto-Start on Boot

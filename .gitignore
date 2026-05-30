@@ -21,7 +21,6 @@ __pycache__/
 
 # macOS
 .DS_Store
-chat.py
 
 # PID lock files
 .api.pid

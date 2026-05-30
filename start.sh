@@ -15,6 +15,12 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+# Check Node.js (needed for web UI)
+if ! command -v npm &>/dev/null; then
+    echo "❌ npm not found. Install Node.js from https://nodejs.org"
+    exit 1
+fi
+
 # Check Ollama
 if ! curl -s http://localhost:11434 &>/dev/null; then
     echo "⚠️  Ollama is not running. Start Ollama first, then run ./start.sh"
