@@ -16,6 +16,7 @@ Handle locally if:
 import requests
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
 from utils import get_logger, _sanitize
+from security import MAX_TOKENS as _MAX_TOKENS
 
 log = get_logger("handoff")
 
@@ -191,7 +192,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                     },
                     json={
                         "model": CLOUD_MODEL,
-                        "max_tokens": 1024,
+                        "max_tokens": _MAX_TOKENS,
                         "tools": TOOL_DEFINITIONS,
                         "messages": messages,
                     },
@@ -250,6 +251,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 json={
                     "model": CLOUD_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": _MAX_TOKENS,
                 },
                 timeout=30,
             )
@@ -267,7 +269,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 json={
                     "model": CLOUD_MODEL or "llama3-8b-8192",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1024,
+                    "max_tokens": _MAX_TOKENS,
                 },
                 timeout=30,
             )
@@ -285,7 +287,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 json={
                     "model": CLOUD_MODEL or "gpt-4o-mini",
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1024,
+                    "max_tokens": _MAX_TOKENS,
                 },
                 timeout=30,
             )
@@ -301,7 +303,10 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             resp = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
                 headers={"x-goog-api-key": CLOUD_API_KEY},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": _MAX_TOKENS},
+                },
                 timeout=30,
             )
             resp.raise_for_status()

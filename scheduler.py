@@ -200,10 +200,13 @@ Rules:
         if fire_at <= datetime.now(tz=ZoneInfo(TIMEZONE)):
             log.error("Parsed fire_at is in the past: %s", fire_at)
             return None
+        _VALID_RECUR = {"daily", "weekly", "hourly"}
+        recur_raw = data.get("recur")
+        recur = recur_raw if recur_raw in _VALID_RECUR else None
         return {
             "message":  data.get("message", text),
             "fire_at":  fire_at,
-            "recur":    data.get("recur"),
+            "recur":    recur,
         }
     except Exception as e:
         log.error("Parse error: %s | raw: %s", e, raw[:100])
