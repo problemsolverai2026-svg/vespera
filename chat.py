@@ -42,6 +42,8 @@ def main():
             print("\n[Vespera] Goodbye.")
             break
 
+        user_input = user_input[:8000]  # match API limit
+
         if not user_input:
             continue
 

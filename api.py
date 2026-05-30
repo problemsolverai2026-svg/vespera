@@ -368,7 +368,11 @@ def run_cleanup():
             _run()
         finally:
             _cleanup_lock.release()
-    threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
+    try:
+        threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
+    except Exception as e:
+        _cleanup_lock.release()
+        return jsonify({"ok": False, "error": f"Failed to start cleanup thread: {e}"}), 500
     return jsonify({"ok": True, "status": "started"}), 202
 
 
@@ -385,7 +389,11 @@ def run_pruning():
             _run()
         finally:
             _pruning_lock.release()
-    threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
+    try:
+        threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
+    except Exception as e:
+        _pruning_lock.release()
+        return jsonify({"ok": False, "error": f"Failed to start pruning thread: {e}"}), 500
     return jsonify({"ok": True, "status": "started"}), 202
 
 
