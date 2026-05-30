@@ -217,7 +217,8 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
                     for block in data["content"]:
                         if block.get("type") == "text":
                             return block["text"]
-                    return ""
+                    log.warning("Claude returned end_turn with no text block: %s", data.get("content"))
+                    return "[No response received from cloud model]"
 
                 # Tool use — run the tool and loop
                 if stop_reason == "tool_use":

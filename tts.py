@@ -112,7 +112,13 @@ def _download_kokoro_bg():
             _kokoro_ready.set()
         except Exception as e:
             log.error("Kokoro download failed: %s", e)
-            # Leave event unset so _tts_kokoro skips gracefully
+            # Clean up any partial .tmp files so next startup retries cleanly
+            for url, path in [(KOKORO_MODEL_URL, KOKORO_MODEL_PATH), (KOKORO_VOICES_URL, KOKORO_VOICES_PATH)]:
+                try:
+                    path.with_suffix('.tmp').unlink(missing_ok=True)
+                except Exception:
+                    pass
+            # Leave _kokoro_ready unset so _tts_kokoro skips gracefully
 
 
 # Kick off background download at import time if files are missing

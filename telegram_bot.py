@@ -149,7 +149,7 @@ def run():
         if not lock_file.exists():
             return False
         try:
-            fd = open(lock_file, 'w')
+            fd = open(lock_file, 'r')  # 'r' — does NOT truncate content
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             fd.close()  # got lock = nobody holds it = main not running
             return False

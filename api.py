@@ -32,6 +32,10 @@ from security import check_api_token, get_status as security_status
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB request body limit
 _env_lock = threading.Lock()
+
+@app.errorhandler(413)
+def request_too_large(e):
+    return jsonify({"ok": False, "error": "Request body too large (max 1 MB)"}), 413
 # Build CORS origins dynamically from configured ports
 _ui_port = os.getenv("UI_PORT", "3055")
 CORS(app, origins=[
@@ -116,49 +120,49 @@ def update_component(name):
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 
     with _env_lock:
-     # Read existing .env
-     env_lines = []
-     if os.path.exists(env_path):
-         with open(env_path) as f:
-             env_lines = f.readlines()
+        # Read existing .env
+        env_lines = []
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                env_lines = f.readlines()
 
-     def set_env(key, value):
-         """Update or append a key in .env lines."""
-         for i, line in enumerate(env_lines):
-             if line.startswith(f"{key}="):
-                 env_lines[i] = f"{key}={value}\n"
-                 return
-         env_lines.append(f"{key}={value}\n")
+        def set_env(key, value):
+            """Update or append a key in .env lines."""
+            for i, line in enumerate(env_lines):
+                if line.startswith(f"{key}="):
+                    env_lines[i] = f"{key}={value}\n"
+                    return
+            env_lines.append(f"{key}={value}\n")
 
-     prefix = name.upper()
-     updated = []
+        prefix = name.upper()
+        updated = []
 
-     if "model" in data:
-         key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
-         set_env(key, _safe_value(data["model"]))
-         updated.append("model")
+        if "model" in data:
+            key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
+            set_env(key, _safe_value(data["model"]))
+            updated.append("model")
 
-     if "api_key" in data:
-         key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
-         set_env(key, _safe_value(data["api_key"]))
-         updated.append("api_key")
+        if "api_key" in data:
+            key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
+            set_env(key, _safe_value(data["api_key"]))
+            updated.append("api_key")
 
-     if "provider" in data and name == "cloud":
-         set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
-         updated.append("provider")
+        if "provider" in data and name == "cloud":
+            set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
+            updated.append("provider")
 
-     # Atomic write — write to temp file then rename so a crash can't corrupt .env
-     tmp_path = env_path + ".tmp"
-     try:
-         with open(tmp_path, "w") as f:
-             f.writelines(env_lines)
-         os.replace(tmp_path, env_path)
-     except Exception as e:
-         try:
-             os.unlink(tmp_path)
-         except FileNotFoundError:
-             pass
-         return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
+        # Atomic write — write to temp file then rename so a crash can't corrupt .env
+        tmp_path = env_path + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                f.writelines(env_lines)
+            os.replace(tmp_path, env_path)
+        except Exception as e:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
 
     return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
 
@@ -173,7 +177,7 @@ def list_memories():
     if auth_err: return auth_err
     layer = request.args.get("layer")
     try:
-        limit = int(request.args.get("limit", 20))
+        limit = max(1, min(int(request.args.get("limit", 20)), 1000))
     except (ValueError, TypeError):
         limit = 20
     memories = get_memories(layer=layer, limit=limit)
@@ -185,7 +189,7 @@ def list_conversations():
     auth_err = require_auth()
     if auth_err: return auth_err
     try:
-        limit = int(request.args.get("limit", 20))
+        limit = max(1, min(int(request.args.get("limit", 20)), 1000))
     except (ValueError, TypeError):
         limit = 20
     convs = get_recent_conversations(limit=limit)
@@ -328,7 +332,10 @@ def run_backup():
     from datetime import datetime
     ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest = os.path.join(os.path.dirname(__file__), "backups", f"vespera_{ts}.db")
-    path = backup_db(dest)
+    try:
+        path = backup_db(dest)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
     return jsonify({"ok": True, "backup": path})
 
 
