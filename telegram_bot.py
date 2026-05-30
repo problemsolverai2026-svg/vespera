@@ -17,9 +17,6 @@ import logging
 import requests
 from pathlib import Path
 
-# ── PID lock: one bot instance only ──────────────────────────────────────────
-_pid_file = Path(__file__).parent / ".telegram.pid"
-
 def _pid_running(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -27,21 +24,22 @@ def _pid_running(pid: int) -> bool:
     except (ProcessLookupError, PermissionError):
         return False
 
-if _pid_file.exists():
-    try:
-        _existing = int(_pid_file.read_text().strip())
-        if _pid_running(_existing):
-            print(f"[VesperaTelegram] Already running (PID {_existing}). Exiting.")
-            raise SystemExit(0)
-    except ValueError:
-        pass
 
-_pid_file.write_text(str(os.getpid()))
-atexit.register(lambda: _pid_file.unlink(missing_ok=True))
-def _handle_sigterm(*_):
-    raise SystemExit(0)
-signal.signal(signal.SIGTERM, _handle_sigterm)
-# ─────────────────────────────────────────────────────────────────────────────
+def _acquire_pid_lock() -> None:
+    """Ensure only one bot instance runs. Call at startup, not on import."""
+    pid_file = Path(__file__).parent / ".telegram.pid"
+    if pid_file.exists():
+        try:
+            existing = int(pid_file.read_text().strip())
+            if _pid_running(existing):
+                print(f"[VesperaTelegram] Already running (PID {existing}). Exiting.")
+                raise SystemExit(0)
+        except ValueError:
+            pass
+    pid_file.write_text(str(os.getpid()))
+    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+    def _handle_sigterm(*_): raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
 try:
     from dotenv import load_dotenv
@@ -106,6 +104,7 @@ def send_reminder(reminder: dict, audio_path: str = None):
 
 
 def run():
+    _acquire_pid_lock()
     if not BOT_TOKEN:
         log.error("TELEGRAM_BOT_TOKEN not set in .env — bot not started.")
         return

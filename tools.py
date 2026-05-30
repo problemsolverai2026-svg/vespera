@@ -51,39 +51,42 @@ if ALLOW_SHELL:
         }
     })
 
-TOOL_DEFINITIONS.append({
-    "name": "read_file",
-    "description": "Read the contents of a file on the user's machine.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": "Absolute or home-relative path to the file."
-            }
-        },
-        "required": ["path"]
-    }
-})
-
-TOOL_DEFINITIONS.append({
-    "name": "write_file",
-    "description": "Write content to a file on the user's machine. Creates the file if it doesn't exist.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": "Absolute or home-relative path to the file."
+# read_file and write_file are gated on ALLOW_SHELL — file access is
+# security-equivalent to shell access and should require the same opt-in.
+if ALLOW_SHELL:
+    TOOL_DEFINITIONS.append({
+        "name": "read_file",
+        "description": "Read the contents of a file on the user's machine.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Absolute or home-relative path to the file."
+                }
             },
-            "content": {
-                "type": "string",
-                "description": "Content to write."
-            }
-        },
-        "required": ["path", "content"]
-    }
-})
+            "required": ["path"]
+        }
+    })
+
+    TOOL_DEFINITIONS.append({
+        "name": "write_file",
+        "description": "Write content to a file on the user's machine. Creates the file if it doesn't exist.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Absolute or home-relative path to the file."
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write."
+                }
+            },
+            "required": ["path", "content"]
+        }
+    })
 
 
 # ─────────────────────────────────────────────
