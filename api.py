@@ -252,8 +252,8 @@ def chat():
         "response": response_text,
         "handled_by": result.get("handled_by", "unknown"),
         "complexity": result.get("complexity", 0.0),
-        "audio": tts_url,   # relative URL the browser can actually fetch
-        "audio_path": tts_path,  # local path for Telegram bot (reads file directly)
+        "audio": tts_url,
+        **({"audio_path": tts_path} if data.get("tts") and tts_path else {}),
     })
 
 

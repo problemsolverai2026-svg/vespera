@@ -170,8 +170,17 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
 
     if not CLOUD_API_KEY:
         log.warning("No cloud API key — falling back to local.")
+        if override_prompt:
+            result = call_local(override_prompt)
+            return result or (
+                "I found web results but need a cloud model to summarize them. "
+                "Add CLOUD_API_KEY to your .env for proper search responses."
+            )
         response, _ = respond_locally(message, memories, recent)
-        return response or "I can answer this better with a cloud AI key. Add CLOUD_API_KEY to your .env for smarter responses."
+        return response or (
+            "I can answer this better with a cloud AI key. "
+            "Add CLOUD_API_KEY to your .env for smarter responses."
+        )
 
     prompt = override_prompt if override_prompt is not None else CLOUD_CONTEXT_PROMPT.format(
         memories=memories, recent=recent, message=message
