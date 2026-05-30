@@ -83,7 +83,6 @@ def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule:
 
 def list_reminders() -> list[dict]:
     with _sched_connect() as conn:
-        conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM reminders WHERE active=1 ORDER BY fire_at ASC"
         ).fetchall()
@@ -101,7 +100,6 @@ def get_due_reminders() -> list[dict]:
     """Return due reminders, atomically claiming each so only one process fires it."""
     now = datetime.now(timezone.utc).isoformat()
     with _sched_connect() as conn:
-        conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM reminders WHERE active=1 AND fire_at <= ? AND claimed_at IS NULL",
             (now,)

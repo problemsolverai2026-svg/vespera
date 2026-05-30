@@ -169,7 +169,6 @@ def _tts_kokoro(text: str) -> str | None:
 def _tts_pyttsx3(text: str) -> str | None:
     try:
         import pyttsx3
-        import tempfile
         engine = pyttsx3.init()
         out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
         engine.save_to_file(text, str(out))

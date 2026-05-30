@@ -72,6 +72,9 @@ def run_cleanup():
     kept = pruned = 0
     for memory in memories:
         decision, reason = review_memory(memory)
+        if decision not in {"keep", "delete"}:
+            log.warning("Unexpected decision '%s' for memory %s — treating as keep", decision, memory["id"][:8])
+            decision = "keep"
         short_id = memory["id"][:8]
         if decision == "delete":
             prune_memory(memory["id"], reason=reason, pruned_by="cleanup_crew")
