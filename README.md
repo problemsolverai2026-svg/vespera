@@ -1,6 +1,8 @@
 # Vespera 🌙
 **A private, self-hosted AI assistant. Runs on your machine. Nobody else controls it.**
 
+[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/problemsolverai2026gmailcom)
+
 No subscription. No monthly fee. Just your own computer — and an optional API key if you want smarter responses.
 
 ---
