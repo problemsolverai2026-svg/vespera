@@ -138,7 +138,7 @@ def search(query: str) -> str:
         snippet = _sanitize_result(r['snippet'][:500])
         lines.append(f"{i}. {title}")
         lines.append(f"   {snippet}")
-        lines.append(f"   {r['url']}")
+        lines.append(f"   {_sanitize_result(r['url'][:500])}")
     return "\n".join(lines)
 
 

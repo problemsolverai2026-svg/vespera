@@ -13,10 +13,9 @@ Handle locally if:
   - Local model has clear context from memory
 """
 
-import re
 import requests
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
-from utils import get_logger
+from utils import get_logger, _sanitize
 
 log = get_logger("handoff")
 
@@ -97,31 +96,6 @@ Answer directly based on the search results. Use today's date to determine what 
 # HELPERS
 # ─────────────────────────────────────────────
 
-# Patterns that could hijack model behavior if smuggled via stored memory or conversations.
-# Use word-boundary regex to avoid false positives on substrings like "interact as" → "act as".
-_INJECTION_RE = re.compile(
-    r"\b(?:"
-    r"ignore\s+(?:all\s+)?previous"
-    r"|disregard\s+previous"
-    r"|new\s+instructions"
-    r"|system\s+prompt"
-    r"|you\s+are\s+now"
-    r"|act\s+as\b"
-    r"|forget\s+everything"
-    r"|override\b"
-    r"|jailbreak"
-    r")",
-    re.IGNORECASE,
-)
-
-
-def _sanitize(text: str, max_len: int) -> str:
-    """Truncate and strip potential injection attempts from memory/conversation content."""
-    truncated = text[:max_len]
-    if _INJECTION_RE.search(truncated):
-        return "[content removed — possible injection attempt]"
-    return truncated
-
 
 def get_context() -> tuple[str, str]:
     mems = get_memories(layer="core", limit=8) or get_memories(layer="validated", limit=8)
@@ -185,7 +159,7 @@ def respond_locally(message: str, memories: str, recent: str) -> tuple[str, bool
     return raw, False
 
 
-def respond_cloud(message: str, memories: str, recent: str) -> str:
+def respond_cloud(message: str, memories: str, recent: str, override_prompt: str = None) -> str:
     """
     Hand off to cloud model.
     Currently a placeholder — wire up your preferred cloud API here.
@@ -198,7 +172,7 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
         response, _ = respond_locally(message, memories, recent)
         return response or "I can answer this better with a cloud AI key. Add CLOUD_API_KEY to your .env for smarter responses."
 
-    prompt = CLOUD_CONTEXT_PROMPT.format(
+    prompt = override_prompt if override_prompt is not None else CLOUD_CONTEXT_PROMPT.format(
         memories=memories, recent=recent, message=message
     )
 
@@ -234,6 +208,13 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
                             return block["text"]
                     log.warning("Claude returned end_turn with no text block: %s", data.get("content"))
                     return "[No response received from cloud model]"
+
+                # Partial response — max tokens reached, return what we have
+                if stop_reason == "max_tokens":
+                    for block in (data.get("content") or []):
+                        if block.get("type") == "text":
+                            return block["text"] + " [truncated]"
+                    return "[Response truncated — max tokens reached]"
 
                 # Tool use — run the tool and loop
                 if stop_reason == "tool_use":
@@ -347,7 +328,7 @@ def handle_message(message: str) -> dict:
             from datetime import datetime
             today = datetime.now().strftime("%A, %B %d, %Y")
             formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results, message=message)
-            response = respond_cloud(formatted_prompt, memories, recent)
+            response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
             return {"response": response, "handled_by": "search+cloud", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local

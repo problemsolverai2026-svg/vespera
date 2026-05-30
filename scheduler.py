@@ -29,7 +29,7 @@ except ImportError:
     pass
 
 import sqlite3
-from utils import get_logger
+from utils import get_logger, _sanitize
 from handoff import call_local
 
 log = get_logger("scheduler")
@@ -162,11 +162,12 @@ def parse_reminder(text: str) -> dict | None:
     tz = ZoneInfo(TIMEZONE)
     now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z")
 
+    safe_text = _sanitize(text, 500)
     prompt = f"""Parse this reminder request into structured data.
 
 Current time: {now_str}
 
-User request: "{text}"
+User request: "{safe_text}"
 
 Return JSON only:
 {{

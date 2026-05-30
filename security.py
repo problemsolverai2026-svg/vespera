@@ -46,7 +46,15 @@ for _p in ALLOW_PATHS:
 API_TOKEN = os.getenv("VESPERA_API_TOKEN", "")
 
 # Max tokens per cloud response — cost control
-MAX_TOKENS = int(os.getenv("VESPERA_MAX_TOKENS", "1024"))
+def _safe_int(env_key: str, default: int) -> int:
+    val = os.getenv(env_key, str(default))
+    try:
+        return int(val)
+    except ValueError:
+        print(f"[security] WARNING: {env_key}='{val}' is not a valid integer — using default {default}")
+        return default
+
+MAX_TOKENS = _safe_int("VESPERA_MAX_TOKENS", 1024)
 
 # Telegram allowed user IDs
 _raw_users = os.getenv("TELEGRAM_ALLOWED_USERS", "")
