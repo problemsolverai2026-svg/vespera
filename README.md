@@ -22,6 +22,7 @@ No subscription. No monthly fee. Just your own computer — and an optional API 
 ### Required
 - A Mac or Linux computer that stays on
 - [Python 3.10+](https://www.python.org/downloads/)
+- [Node.js 18+](https://nodejs.org) — for the web UI
 - [Ollama](https://ollama.ai) — runs the local AI model
 
 ### Optional (all free)
@@ -169,6 +170,9 @@ Memory is stored in a local SQLite database. It uses a layered structure — `re
 
 ## Logs
 
+**When using `./start.sh`:** logs print directly to your terminal window.
+
+**When using auto-start (LaunchAgents / systemd):** logs go to files:
 ```bash
 tail -f /tmp/vespera.log          # background loop
 tail -f /tmp/vespera-api.log      # API server
