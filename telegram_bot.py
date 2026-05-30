@@ -39,7 +39,9 @@ if _pid_file.exists():
 
 _pid_file.write_text(str(os.getpid()))
 atexit.register(lambda: _pid_file.unlink(missing_ok=True))
-signal.signal(signal.SIGTERM, lambda *_: SystemExit(0))
+def _handle_sigterm(*_):
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, _handle_sigterm)
 # ─────────────────────────────────────────────────────────────────────────────
 
 try:

@@ -13,7 +13,7 @@ Exposes endpoints for:
   - POST /api/cleanup/run     — trigger a manual cleanup pass
 
 Run with: python3 api.py
-Default port: 5050
+Default port: 5055
 """
 
 from flask import Flask, jsonify, request
@@ -308,8 +308,6 @@ if __name__ == "__main__":
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, _handle_sigterm)
     # ───────────────────────────────────────────────────────────────────
-
-    import socket
 
     def find_free_port(start: int, max_tries: int = 10) -> int:
         for p in range(start, start + max_tries):
