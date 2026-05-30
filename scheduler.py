@@ -15,7 +15,6 @@ No external calendar needed — fully local.
 """
 
 import os
-import json
 import uuid
 import threading
 import time
