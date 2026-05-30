@@ -50,6 +50,7 @@ def _sched_connect():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -204,7 +205,7 @@ Rules:
         recur_raw = data.get("recur")
         recur = recur_raw if recur_raw in _VALID_RECUR else None
         return {
-            "message":  _sanitize(str(data.get("message", text)), 500),
+            "message":  _sanitize(str(data.get("message") or text), 500),
             "fire_at":  fire_at,
             "recur":    recur,
         }

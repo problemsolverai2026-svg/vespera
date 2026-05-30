@@ -90,9 +90,9 @@ def status():
 
 @app.route("/api/components")
 def list_components():
+    """Return all components with their descriptions and current config."""
     auth_err = require_auth()
     if auth_err: return auth_err
-    """Return all components with their descriptions and current config."""
     safe = {}
     for name, cfg in COMPONENTS.items():
         safe[name] = {
@@ -257,7 +257,6 @@ def chat():
         "handled_by": result.get("handled_by", "unknown"),
         "complexity": result.get("complexity", 0.0),
         "audio": tts_url,
-        **({"audio_path": tts_path} if data.get("tts") and tts_path else {}),
     })
 
 
@@ -267,9 +266,9 @@ def chat():
 
 @app.route("/api/models")
 def get_models():
+    """List all locally downloaded Ollama models."""
     auth_err = require_auth()
     if auth_err: return auth_err
-    """List all locally downloaded Ollama models."""
     import subprocess
     try:
         ollama_bin = os.getenv("OLLAMA_BIN", "/usr/local/bin/ollama")

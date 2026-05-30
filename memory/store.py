@@ -150,23 +150,25 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
 def prune_memory(memory_id: str, reason: str, pruned_by: str = "cleanup_crew"):
     """Soft-delete a memory and log it."""
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT content FROM memories WHERE id = ? AND pruned = 0", (memory_id,)
-        ).fetchone()
-
-        if not row:
-            return
-
-        conn.execute(
-            "UPDATE memories SET pruned = 1, updated_at = ? WHERE id = ?",
+        # Atomic claim: UPDATE wins the race; second caller gets rowcount=0 and exits early
+        cur = conn.execute(
+            "UPDATE memories SET pruned = 1, updated_at = ? WHERE id = ? AND pruned = 0",
             (_now(), memory_id),
         )
+        if cur.rowcount == 0:
+            return  # Not found or already claimed by a concurrent caller
+
+        row = conn.execute(
+            "SELECT content FROM memories WHERE id = ?", (memory_id,)
+        ).fetchone()
+
         conn.execute(
             """
             INSERT INTO prune_log (id, memory_id, reason, pruned_by, pruned_at, content)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (str(uuid.uuid4()), memory_id, reason, pruned_by, _now(), row["content"]),
+            (str(uuid.uuid4()), memory_id, reason, pruned_by, _now(),
+             row["content"] if row else ""),
         )
         log.info("Pruned %s (%s): %s", memory_id[:8], pruned_by, reason)
 
