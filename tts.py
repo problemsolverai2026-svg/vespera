@@ -95,13 +95,19 @@ def _download_kokoro_bg():
             return
         log.info("Kokoro model not found — downloading in background (~80MB, one time only)...")
         try:
+            tmp_files = []
             for url, path in [(KOKORO_MODEL_URL, KOKORO_MODEL_PATH), (KOKORO_VOICES_URL, KOKORO_VOICES_PATH)]:
+                tmp = path.with_suffix('.tmp')
                 log.info("Downloading %s...", path.name)
                 resp = requests.get(url, stream=True, timeout=120)
                 resp.raise_for_status()
-                with open(path, "wb") as f:
+                with open(tmp, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=8192):
                         f.write(chunk)
+                tmp_files.append((tmp, path))
+            # Only rename after BOTH downloads succeed — prevents partial-file false-ready
+            for tmp, path in tmp_files:
+                tmp.rename(path)
             log.info("Kokoro download complete.")
             _kokoro_ready.set()
         except Exception as e:

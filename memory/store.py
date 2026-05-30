@@ -229,15 +229,15 @@ def get_recent_conversations(limit: int = 20) -> list[dict]:
 
 def backup_db(dest_path: str) -> str:
     """Copy the live database to dest_path using SQLite's online backup API."""
-    import shutil
     dest = Path(dest_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
     src_conn  = sqlite3.connect(DB_PATH)
     dest_conn = sqlite3.connect(dest)
-    with dest_conn:
+    try:
         src_conn.backup(dest_conn)
-    src_conn.close()
-    dest_conn.close()
+    finally:
+        src_conn.close()
+        dest_conn.close()
     log.info("Database backed up to %s", dest)
     return str(dest)
 

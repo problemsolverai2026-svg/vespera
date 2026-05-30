@@ -156,26 +156,17 @@ def run_test():
 # ─────────────────────────────────────────────
 
 def main():
-    # ── PID lock — prevent duplicate instances ──────────────────────────
-    pid_file = Path(__file__).parent / ".main.pid"
-
-    def _pid_running(pid: int) -> bool:
-        try:
-            os.kill(pid, 0)
-            return True
-        except (ProcessLookupError, PermissionError):
-            return False
-
-    if pid_file.exists():
-        try:
-            existing = int(pid_file.read_text().strip())
-            if _pid_running(existing):
-                log.error("Already running (PID %d). Exiting.", existing)
-                raise SystemExit(0)
-        except ValueError:
-            pass
-    pid_file.write_text(str(os.getpid()))
-    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+    # ── flock-based lock — atomic, SIGKILL-safe, no TOCTOU ──────────────────────
+    import fcntl
+    lock_file = Path(__file__).parent / ".main.lock"
+    _lockfd = open(lock_file, 'w')
+    try:
+        fcntl.flock(_lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        log.error("Already running. Exiting.")
+        raise SystemExit(0)
+    _lockfd.write(str(os.getpid()))
+    _lockfd.flush()
     # ───────────────────────────────────────────────────────────────────
 
     init_db()

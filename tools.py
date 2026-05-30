@@ -104,6 +104,12 @@ def _path_allowed(path: str) -> bool:
 def run_shell(command: str, workdir: str = None) -> str:
     if not ALLOW_SHELL:
         return "Error: shell execution is disabled. Set VESPERA_ALLOW_SHELL=true in .env to enable."
+    cwd = HOME
+    if workdir:
+        resolved_wd = workdir.replace("~", HOME)
+        if not _path_allowed(resolved_wd):
+            return f"Error: workdir not in allowed paths: {resolved_wd}"
+        cwd = resolved_wd
     try:
         result = subprocess.run(
             command,
@@ -111,7 +117,7 @@ def run_shell(command: str, workdir: str = None) -> str:
             capture_output=True,
             text=True,
             timeout=30,
-            cwd=workdir or HOME,
+            cwd=cwd,
         )
         output = result.stdout + result.stderr
         return output.strip() if output.strip() else "(no output)"

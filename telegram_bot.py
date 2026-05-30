@@ -26,20 +26,22 @@ def _pid_running(pid: int) -> bool:
 
 
 def _acquire_pid_lock() -> None:
-    """Ensure only one bot instance runs. Call at startup, not on import."""
-    pid_file = Path(__file__).parent / ".telegram.pid"
-    if pid_file.exists():
-        try:
-            existing = int(pid_file.read_text().strip())
-            if _pid_running(existing):
-                print(f"[VesperaTelegram] Already running (PID {existing}). Exiting.")
-                raise SystemExit(0)
-        except ValueError:
-            pass
-    pid_file.write_text(str(os.getpid()))
-    atexit.register(lambda: pid_file.unlink(missing_ok=True))
+    """Ensure only one bot instance runs. Uses flock — atomic and SIGKILL-safe."""
+    import fcntl
+    lock_file = Path(__file__).parent / ".telegram.lock"
+    global _lockfd
+    _lockfd = open(lock_file, 'w')
+    try:
+        fcntl.flock(_lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("[VesperaTelegram] Already running. Exiting.")
+        raise SystemExit(0)
+    _lockfd.write(str(os.getpid()))
+    _lockfd.flush()
     def _handle_sigterm(*_): raise SystemExit(0)
     signal.signal(signal.SIGTERM, _handle_sigterm)
+
+_lockfd = None  # module-level ref keeps fd open (and lock held) for process lifetime
 
 try:
     from dotenv import load_dotenv
@@ -141,16 +143,18 @@ def run():
     from scheduler import register_callback, run as scheduler_run
     register_callback(send_reminder)
 
-    _main_pid_file = Path(__file__).parent / ".main.pid"
     def _main_running() -> bool:
-        if not _main_pid_file.exists():
+        import fcntl
+        lock_file = Path(__file__).parent / ".main.lock"
+        if not lock_file.exists():
             return False
         try:
-            pid = int(_main_pid_file.read_text().strip())
-            os.kill(pid, 0)
-            return True
-        except Exception:
+            fd = open(lock_file, 'w')
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fd.close()  # got lock = nobody holds it = main not running
             return False
+        except IOError:
+            return True  # lock held = main.py is running
 
     if not _main_running():
         _sched_shutdown = threading.Event()

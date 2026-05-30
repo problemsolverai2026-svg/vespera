@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import json
+import threading
 from pathlib import Path
 from config import COMPONENTS, get_component, COMPLEXITY_THRESHOLD, PRUNING_INTERVAL_DAYS
 from memory.store import (
@@ -29,6 +30,8 @@ from memory.store import (
 from security import check_api_token, get_status as security_status
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB request body limit
+_env_lock = threading.Lock()
 # Build CORS origins dynamically from configured ports
 _ui_port = os.getenv("UI_PORT", "3055")
 CORS(app, origins=[
@@ -112,49 +115,50 @@ def update_component(name):
 
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 
-    # Read existing .env
-    env_lines = []
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            env_lines = f.readlines()
+    with _env_lock:
+     # Read existing .env
+     env_lines = []
+     if os.path.exists(env_path):
+         with open(env_path) as f:
+             env_lines = f.readlines()
 
-    def set_env(key, value):
-        """Update or append a key in .env lines."""
-        for i, line in enumerate(env_lines):
-            if line.startswith(f"{key}="):
-                env_lines[i] = f"{key}={value}\n"
-                return
-        env_lines.append(f"{key}={value}\n")
+     def set_env(key, value):
+         """Update or append a key in .env lines."""
+         for i, line in enumerate(env_lines):
+             if line.startswith(f"{key}="):
+                 env_lines[i] = f"{key}={value}\n"
+                 return
+         env_lines.append(f"{key}={value}\n")
 
-    prefix = name.upper()
-    updated = []
+     prefix = name.upper()
+     updated = []
 
-    if "model" in data:
-        key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
-        set_env(key, _safe_value(data["model"]))
-        updated.append("model")
+     if "model" in data:
+         key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
+         set_env(key, _safe_value(data["model"]))
+         updated.append("model")
 
-    if "api_key" in data:
-        key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
-        set_env(key, _safe_value(data["api_key"]))
-        updated.append("api_key")
+     if "api_key" in data:
+         key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
+         set_env(key, _safe_value(data["api_key"]))
+         updated.append("api_key")
 
-    if "provider" in data and name == "cloud":
-        set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
-        updated.append("provider")
+     if "provider" in data and name == "cloud":
+         set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
+         updated.append("provider")
 
-    # Atomic write — write to temp file then rename so a crash can't corrupt .env
-    tmp_path = env_path + ".tmp"
-    try:
-        with open(tmp_path, "w") as f:
-            f.writelines(env_lines)
-        os.replace(tmp_path, env_path)
-    except Exception as e:
-        try:
-            os.unlink(tmp_path)
-        except FileNotFoundError:
-            pass
-        return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
+     # Atomic write — write to temp file then rename so a crash can't corrupt .env
+     tmp_path = env_path + ".tmp"
+     try:
+         with open(tmp_path, "w") as f:
+             f.writelines(env_lines)
+         os.replace(tmp_path, env_path)
+     except Exception as e:
+         try:
+             os.unlink(tmp_path)
+         except FileNotFoundError:
+             pass
+         return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
 
     return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
 
@@ -208,6 +212,8 @@ def chat():
     message = data.get("message", "").strip()
     if not message:
         return jsonify({"ok": False, "error": "No message provided"}), 400
+    if len(message) > 8000:
+        return jsonify({"ok": False, "error": "Message too long (max 8000 chars)"}), 400
 
     from handoff import handle_message
     add_conversation(role="user", content=message)
@@ -354,34 +360,18 @@ if __name__ == "__main__":
     import atexit
 
     # ── PID lock: ensure only one instance runs at a time ──────────────
-    pid_file = Path(__file__).parent / ".api.pid"
+    import fcntl
+    lock_file = Path(__file__).parent / ".api.lock"
+    _lockfd = open(lock_file, 'w')
+    try:
+        fcntl.flock(_lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("[Vespera API] Already running. Exiting.")
+        raise SystemExit(0)
+    _lockfd.write(str(os.getpid()))
+    _lockfd.flush()
+    # flock is released automatically by the OS on process exit (including SIGKILL)
 
-    def _check_pid(pid: int) -> bool:
-        """Return True if a process with this PID is currently running."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except (ProcessLookupError, PermissionError):
-            return False
-
-    if pid_file.exists():
-        try:
-            existing_pid = int(pid_file.read_text().strip())
-            if _check_pid(existing_pid):
-                print(f"[Vespera API] Already running (PID {existing_pid}). Exiting.")
-                raise SystemExit(0)
-        except ValueError:
-            pass  # corrupted pid file — overwrite it
-
-    pid_file.write_text(str(os.getpid()))
-
-    def _remove_pid():
-        try:
-            pid_file.unlink()
-        except FileNotFoundError:
-            pass
-
-    atexit.register(_remove_pid)
     def _handle_sigterm(*_):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, _handle_sigterm)
