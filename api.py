@@ -228,24 +228,30 @@ def chat():
 
     from handoff import handle_message
     add_conversation(role="user", content=message)
-    result = handle_message(message)
-    add_conversation(role="assistant", content=result["response"])
+    try:
+        result = handle_message(message)
+    except Exception as e:
+        err_text = f"[Internal error: {e}]"
+        add_conversation(role="assistant", content=err_text)
+        return jsonify({"ok": False, "error": err_text}), 500
+    add_conversation(role="assistant", content=result.get("response", ""))
+
+    response_text = result.get("response", "")
 
     # Generate TTS if requested
     tts_path = None
     tts_url  = None
     if data.get("tts", False):
         from tts import speak
-        tts_path = speak(result["response"])
+        tts_path = speak(response_text)
         if tts_path:
-            import os as _os
-            tts_url = f"/api/audio/{_os.path.basename(tts_path)}"
+            tts_url = f"/api/audio/{os.path.basename(tts_path)}"
 
     return jsonify({
         "ok": True,
-        "response": result["response"],
-        "handled_by": result["handled_by"],
-        "complexity": result["complexity"],
+        "response": response_text,
+        "handled_by": result.get("handled_by", "unknown"),
+        "complexity": result.get("complexity", 0.0),
         "audio": tts_url,   # relative URL the browser can actually fetch
         "audio_path": tts_path,  # local path for Telegram bot (reads file directly)
     })
