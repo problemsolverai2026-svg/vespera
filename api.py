@@ -125,8 +125,18 @@ def update_component(name):
         set_env("CLOUD_PROVIDER", data["provider"])
         updated.append("provider")
 
-    with open(env_path, "w") as f:
-        f.writelines(env_lines)
+    # Atomic write — write to temp file then rename so a crash can't corrupt .env
+    tmp_path = env_path + ".tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            f.writelines(env_lines)
+        os.replace(tmp_path, env_path)
+    except Exception as e:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
 
     return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
 
