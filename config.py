@@ -23,8 +23,7 @@ except ImportError:
 # PATHS
 # ─────────────────────────────────────────────
 
-BASE_DIR       = Path(__file__).parent
-MEMORY_DB_PATH = BASE_DIR / "memory" / "vespera.db"
+BASE_DIR = Path(__file__).parent
 
 # ─────────────────────────────────────────────
 # COMPONENT MODEL ASSIGNMENTS

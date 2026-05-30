@@ -29,7 +29,14 @@ from memory.store import (
 from security import check_api_token, get_status as security_status
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3055", "http://127.0.0.1:3055", "http://localhost:5173", "http://127.0.0.1:5173"])
+# Build CORS origins dynamically from configured ports
+_ui_port = os.getenv("UI_PORT", "3055")
+CORS(app, origins=[
+    f"http://localhost:{_ui_port}",
+    f"http://127.0.0.1:{_ui_port}",
+    "http://localhost:5173",   # Vite default dev port
+    "http://127.0.0.1:5173",
+])
 
 init_db()
 
