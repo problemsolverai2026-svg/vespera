@@ -225,7 +225,7 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
 
                 # No tool call — return the text
                 if stop_reason == "end_turn":
-                    for block in data["content"]:
+                    for block in (data.get("content") or []):
                         if block.get("type") == "text":
                             return block["text"]
                     log.warning("Claude returned end_turn with no text block: %s", data.get("content"))
@@ -233,9 +233,10 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
 
                 # Tool use — run the tool and loop
                 if stop_reason == "tool_use":
-                    messages.append({"role": "assistant", "content": data["content"]})
+                    content_blocks = data.get("content") or []
+                    messages.append({"role": "assistant", "content": content_blocks})
                     tool_results = []
-                    for block in data["content"]:
+                    for block in content_blocks:
                         if block.get("type") == "tool_use":
                             result = run_tool(block["name"], block.get("input", {}))
                             tool_results.append({

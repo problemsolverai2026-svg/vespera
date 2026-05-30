@@ -190,7 +190,8 @@ Rules:
     try:
         from utils import parse_json_response
         data = parse_json_response(raw)
-        if not data:
+        if not data or not data.get("fire_at"):
+            log.error("Model returned JSON without fire_at: %s", raw[:100])
             return None
         fire_at = datetime.fromisoformat(data["fire_at"])
         if fire_at.tzinfo is None:
