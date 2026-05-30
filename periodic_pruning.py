@@ -71,7 +71,7 @@ def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
     if not decision or not isinstance(decision, str):
         return "keep", "missing or null decision"
     decision = decision.strip().lower()
-    return (decision if decision in ("promote", "keep", "delete") else "keep"), result.get("reason", "")
+    return (decision if decision in ("promote", "keep", "delete") else "keep"), _sanitize(result.get("reason", ""), 500)  # sanitize model output before storage
 
 
 def run_pruning():

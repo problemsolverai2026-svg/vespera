@@ -116,6 +116,7 @@ def run_loop(shutdown_event: threading.Event = None):
             else:
                 thought = think()
                 if thought:
+                    thought = _sanitize(thought, 500)  # sanitize model output before storage
                     mem_id = add_memory(content=thought, layer="recent", source="background_loop")
                     log.info("Saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
@@ -130,6 +131,7 @@ if __name__ == "__main__":
         init_db()
         thought = think()
         if thought:
+            thought = _sanitize(thought, 500)  # sanitize model output before storage
             mem_id = add_memory(content=thought, layer="recent", source="background_loop")
             log.info("Saved (%s): %s", mem_id[:8], thought)
         else:

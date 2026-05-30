@@ -60,7 +60,7 @@ def review_memory(memory: dict) -> tuple[str, str]:
     decision = result.get("decision")
     if not decision or not isinstance(decision, str):
         return "keep", "missing or null decision"
-    return decision.lower(), result.get("reason", "")
+    return decision.lower(), _sanitize(result.get("reason", ""), 500)  # sanitize model output before storage
 
 
 def run_cleanup():

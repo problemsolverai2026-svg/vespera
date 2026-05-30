@@ -185,6 +185,12 @@ Rules:
 - "every day" = daily at same time
 - Keep message concise"""
 
+    # NOTE: We call call_local() directly here rather than routing through handle_message()
+    # because this is an internal structured JSON extraction task — not a user-facing response.
+    # Routing through handle_message() would pollute conversation history, trigger unnecessary
+    # complexity scoring overhead, and replace our structured prompt with the generic chat prompt.
+    # Limitation: complex time expressions always use the local model; upgrade path is to call
+    # respond_cloud() from handoff.py for a retry if the local parse fails.
     raw = call_local(prompt)
     if not raw:
         return None

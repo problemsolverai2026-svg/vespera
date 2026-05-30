@@ -103,7 +103,7 @@ def _path_allowed(path: str) -> bool:
 # TOOL RUNNERS
 # ─────────────────────────────────────────────
 
-_SHELL_BLOCKLIST = [";", "&&", "||", "|", "$(", "`", ">", ">>", "<(", "2>", "&", "\n", "\r", "<", "$"]
+_SHELL_BLOCKLIST = [";", "&&", "||", "|", "$(", "`", ">", ">>", "<(", "2>", "&", "\n", "\r", "<", "$", "${", "$`"]  # ${ = variable brace expansion, $` = command substitution inside quotes
 
 def run_shell(command: str, workdir: str = None) -> str:
     if not ALLOW_SHELL:

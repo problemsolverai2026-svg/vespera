@@ -195,12 +195,26 @@ def _cleanup_tts_dir(max_age_seconds: int = 3600):
             pass
 
 
+_last_cleanup = 0.0  # module-level timestamp — throttles cleanup to at most once per minute
+
+
+def _maybe_cleanup_tts():
+    """Run TTS directory cleanup at most once per minute."""
+    global _last_cleanup
+    import time
+    now = time.time()
+    if now - _last_cleanup < 60:
+        return
+    _last_cleanup = now
+    _cleanup_tts_dir()
+
+
 def speak(text: str) -> str | None:
     if not text or not text.strip():
         return None
     if len(text) > 1500:
         text = text[:1500] + "..."
-    _cleanup_tts_dir()
+    _maybe_cleanup_tts()
 
     if VENICE_API_KEY:
         result = _tts_venice(text)
