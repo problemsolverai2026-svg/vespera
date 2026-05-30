@@ -29,6 +29,7 @@ CLOUD_PROVIDER = _cloud["provider"]
 CLOUD_MODEL    = _cloud["model"]
 CLOUD_API_KEY  = _cloud["api_key"]
 CLOUD_BASE_URL = _cloud.get("base_url", "")
+MAX_RESPONSE_LENGTH = 2000  # truncate responses before storing to conversation history
 from memory.store import get_memories, get_recent_conversations
 from web_search import search as web_search
 from tools import TOOL_DEFINITIONS, run_tool
