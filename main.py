@@ -16,7 +16,7 @@ import threading
 import signal
 import atexit
 from pathlib import Path
-from utils import get_logger
+from utils import get_logger, _sanitize
 
 log = get_logger("vespera")
 import requests as req
@@ -61,6 +61,7 @@ def run_background_loop():
             else:
                 thought = think()
                 if thought:
+                    thought = _sanitize(thought, 500)  # sanitize model output before storage
                     mem_id = add_memory(content=thought, layer="recent", source="background_loop")
                     log.info("BackgroundLoop thought saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
@@ -134,6 +135,7 @@ def run_test():
     log.info("--- Background Loop ---")
     thought = think()
     if thought:
+        thought = _sanitize(thought, 500)  # sanitize model output before storage
         add_memory(content=thought, layer="recent", source="background_loop")
         log.info("Thought: %s...", thought[:100])
     else:
