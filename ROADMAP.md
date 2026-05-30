@@ -42,7 +42,7 @@ Just an Anthropic (or Groq/Venice) API key and a machine to run it on.
 - [ ] Web UI password protection
 - [ ] Model selector in UI — pick from downloaded Ollama models per component
 - [ ] Resources page in UI — links to every API with pricing
-- [ ] Contributing guide
+- [x] Contributing guide
 - [ ] docker-compose.yml for one-command deploy
 
 ### Phase 2 — Messaging

@@ -106,11 +106,15 @@ Then set `BACKGROUND_OLLAMA_MODEL=qwen2.5:7b` in `.env`.
 
 ### macOS (LaunchAgents)
 
-```bash
-# Edit each .plist in launchagents/ and replace REPLACE_WITH_YOUR_PATH
-# with the full path to your vespera folder (e.g. /Users/yourname/vespera)
+**Recommended:** run `./setup.sh` — it will ask whether to set up auto-start and handles the path substitution automatically.
 
-cp launchagents/*.plist ~/Library/LaunchAgents/
+**Manual (if you skipped setup.sh):**
+```bash
+# Substitute your actual path into the plist files first:
+for plist in launchagents/*.plist; do
+    sed "s|REPLACE_WITH_YOUR_PATH|$(pwd)|g" "$plist" \
+        > ~/Library/LaunchAgents/$(basename "$plist")
+done
 for f in ~/Library/LaunchAgents/com.vespera.*.plist; do launchctl load "$f"; done
 ```
 
@@ -121,8 +125,8 @@ Vespera starts automatically every time your Mac turns on.
 ```bash
 cp systemd/*.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable vespera-main vespera-api vespera-telegram
-systemctl --user start vespera-main vespera-api vespera-telegram
+systemctl --user enable vespera-main vespera-api vespera-telegram vespera-ui
+systemctl --user start vespera-main vespera-api vespera-telegram vespera-ui
 ```
 
 ---
@@ -143,7 +147,7 @@ Response + Voice
 Background loop thinks quietly, saves useful context to memory
 ```
 
-Memory is stored in a local SQLite database. It uses a layered structure — `recent → validated → core` — where memories are promoted or pruned over time by the cleanup and pruning components. Nothing leaves your machine unless you've added a cloud API key.
+Memory is stored in a local SQLite database. It uses a four-layer nesting-doll structure — `working → recent → validated → core` — where memories are promoted or pruned over time by the cleanup and pruning components. Nothing leaves your machine unless you've added a cloud API key.
 
 ---
 
@@ -250,7 +254,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Telegram** can be restricted to specific user IDs via `TELEGRAM_ALLOWED_USERS`.
 - **Web search results** are sanitized before being fed into model prompts to reduce prompt injection risk.
 - **Cloud APIs** only receive your message and minimal memory context — your full memory database never leaves your machine.
-- **Extensively audited** — 50+ bugs fixed across 13 rounds of parallel Opus + Gemini security review before public release.
+- **Extensively audited** — 60+ bugs fixed across 15+ rounds of parallel Opus + Gemini + Grok security review before public release.
 
 ---
 
@@ -260,7 +264,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Requires Ollama** — no cloud-only mode without a local model
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
 - **UI is basic** — model selector, API key page, and memory visualization are planned but not built
-- **No automated tests** — unit tests not yet written, though the codebase underwent 13 rounds of parallel AI security audit (50+ issues fixed) before release. Contributions welcome.
+- **No automated tests** — unit tests not yet written, though the codebase underwent 15+ rounds of parallel AI security audit (60+ issues fixed) before release. Contributions welcome.
 - **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 
 ---
