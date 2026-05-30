@@ -77,7 +77,12 @@ Open `.env` and fill in your values. **Minimum required:** nothing. It works out
 - Groq (free, fast): [console.groq.com](https://console.groq.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=groq`
 - Anthropic Claude: [console.anthropic.com](https://console.anthropic.com) → set `CLOUD_API_KEY=` and `CLOUD_PROVIDER=claude`
 
-### Step 5 — Start Vespera
+### Step 5 — Install UI dependencies
+```bash
+cd ui && npm install && cd ..
+```
+
+### Step 6 — Start Vespera
 ```bash
 ./start.sh
 ```
@@ -87,6 +92,8 @@ One command starts everything: API, background loop, Telegram bot, and web UI.
 Open your browser to: **http://localhost:3055**
 
 If port 3055 or 5055 is already in use, Vespera automatically picks the next available port and tells you.
+
+> **No UI?** If you want to run backend-only (no web interface), skip Step 5. Everything still works via Telegram and the API.
 
 ---
 

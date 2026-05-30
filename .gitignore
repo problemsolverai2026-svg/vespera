@@ -22,3 +22,12 @@ __pycache__/
 # macOS
 .DS_Store
 chat.py
+
+# PID lock files
+.api.pid
+.telegram.pid
+
+# UI — node deps and build output
+ui/node_modules/
+ui/dist/
+ui/.env.local

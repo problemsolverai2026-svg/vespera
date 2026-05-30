@@ -5,7 +5,7 @@
 # ─────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-UI_DIR="${VESPERA_UI_DIR:-$SCRIPT_DIR/../vespera-memory-hub}"
+UI_DIR="${VESPERA_UI_DIR:-$SCRIPT_DIR/ui}"
 
 echo "Starting Vespera..."
 
