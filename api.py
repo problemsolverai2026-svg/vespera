@@ -272,6 +272,44 @@ def run_pruning():
 
 if __name__ == "__main__":
     import socket
+    import signal
+    import atexit
+
+    # ── PID lock: ensure only one instance runs at a time ──────────────
+    pid_file = Path(__file__).parent / ".api.pid"
+
+    def _check_pid(pid: int) -> bool:
+        """Return True if a process with this PID is currently running."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+    if pid_file.exists():
+        try:
+            existing_pid = int(pid_file.read_text().strip())
+            if _check_pid(existing_pid):
+                print(f"[Vespera API] Already running (PID {existing_pid}). Exiting.")
+                raise SystemExit(0)
+        except ValueError:
+            pass  # corrupted pid file — overwrite it
+
+    pid_file.write_text(str(os.getpid()))
+
+    def _remove_pid():
+        try:
+            pid_file.unlink()
+        except FileNotFoundError:
+            pass
+
+    atexit.register(_remove_pid)
+    def _handle_sigterm(*_):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+    # ───────────────────────────────────────────────────────────────────
+
+    import socket
 
     def find_free_port(start: int, max_tries: int = 10) -> int:
         for p in range(start, start + max_tries):

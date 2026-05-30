@@ -11,10 +11,36 @@ Setup:
 """
 
 import os
+import signal
+import atexit
 import logging
 import requests
 from pathlib import Path
 from security import ALLOWED_TELEGRAM_USERS as _SECURITY_ALLOWED_USERS
+
+# ── PID lock: one bot instance only ──────────────────────────────────────────
+_pid_file = Path(__file__).parent / ".telegram.pid"
+
+def _pid_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+if _pid_file.exists():
+    try:
+        _existing = int(_pid_file.read_text().strip())
+        if _pid_running(_existing):
+            print(f"[VesperaTelegram] Already running (PID {_existing}). Exiting.")
+            raise SystemExit(0)
+    except ValueError:
+        pass
+
+_pid_file.write_text(str(os.getpid()))
+atexit.register(lambda: _pid_file.unlink(missing_ok=True))
+signal.signal(signal.SIGTERM, lambda *_: SystemExit(0))
+# ─────────────────────────────────────────────────────────────────────────────
 
 try:
     from dotenv import load_dotenv
