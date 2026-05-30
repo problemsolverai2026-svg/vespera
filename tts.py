@@ -136,11 +136,24 @@ def _tts_pyttsx3(text: str) -> str | None:
 # MAIN ENTRY
 # ─────────────────────────────────────────────
 
+def _cleanup_tts_dir(max_age_seconds: int = 3600):
+    """Delete TTS files older than max_age_seconds (default 1 hour)."""
+    import time
+    now = time.time()
+    for f in TTS_DIR.iterdir():
+        try:
+            if f.is_file() and (now - f.stat().st_mtime) > max_age_seconds:
+                f.unlink()
+        except Exception:
+            pass
+
+
 def speak(text: str) -> str | None:
     if not text or not text.strip():
         return None
     if len(text) > 1500:
         text = text[:1500] + "..."
+    _cleanup_tts_dir()
 
     if VENICE_API_KEY:
         result = _tts_venice(text)

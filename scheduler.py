@@ -65,13 +65,18 @@ def init_scheduler_db():
 
 def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule: str = None) -> str:
     rid = uuid.uuid4().hex[:8]
+    # Always normalize to UTC so string comparisons in get_due_reminders() are correct
+    if fire_at.tzinfo is not None:
+        fire_at_utc = fire_at.astimezone(timezone.utc)
+    else:
+        fire_at_utc = fire_at.replace(tzinfo=timezone.utc)
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             "INSERT INTO reminders (id, message, fire_at, recur, recur_rule, active, created_at) VALUES (?,?,?,?,?,1,?)",
-            (rid, message, fire_at.isoformat(), recur, recur_rule, datetime.now(timezone.utc).isoformat())
+            (rid, message, fire_at_utc.isoformat(), recur, recur_rule, datetime.now(timezone.utc).isoformat())
         )
         conn.commit()
-    print(f"[Scheduler] Reminder set: '{message}' at {fire_at.strftime('%Y-%m-%d %H:%M %Z')} (id: {rid})")
+    print(f"[Scheduler] Reminder set: '{message}' at {fire_at_utc.strftime('%Y-%m-%d %H:%M %Z')} (id: {rid})")
     return rid
 
 
@@ -111,6 +116,8 @@ def reschedule_or_complete(reminder: dict):
         return
 
     fire_at = datetime.fromisoformat(reminder["fire_at"])
+    if fire_at.tzinfo is None:
+        fire_at = fire_at.replace(tzinfo=timezone.utc)
     if recur == "daily":
         next_fire = fire_at + relativedelta(days=1)
     elif recur == "weekly":
@@ -121,10 +128,11 @@ def reschedule_or_complete(reminder: dict):
         cancel_reminder(reminder["id"])
         return
 
+    next_utc = next_fire.astimezone(timezone.utc)
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("UPDATE reminders SET fire_at=? WHERE id=?", (next_fire.isoformat(), reminder["id"]))
+        conn.execute("UPDATE reminders SET fire_at=? WHERE id=?", (next_utc.isoformat(), reminder["id"]))
         conn.commit()
-    print(f"[Scheduler] Rescheduled '{reminder['message']}' → {next_fire.strftime('%Y-%m-%d %H:%M %Z')}")
+    print(f"[Scheduler] Rescheduled '{reminder['message']}' → {next_utc.strftime('%Y-%m-%d %H:%M %Z')}")
 
 
 # ─────────────────────────────────────────────

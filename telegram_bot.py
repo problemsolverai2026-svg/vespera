@@ -16,7 +16,6 @@ import atexit
 import logging
 import requests
 from pathlib import Path
-from security import ALLOWED_TELEGRAM_USERS as _SECURITY_ALLOWED_USERS
 
 # ── PID lock: one bot instance only ──────────────────────────────────────────
 _pid_file = Path(__file__).parent / ".telegram.pid"
@@ -88,7 +87,8 @@ def send_reminder(reminder: dict, audio_path: str = None):
     from telegram import Bot
     async def _send():
         bot = Bot(token=BOT_TOKEN)
-        targets = _SECURITY_ALLOWED_USERS if _SECURITY_ALLOWED_USERS else []
+        # Use same list as is_allowed() — single source of truth
+        targets = [u.strip() for u in ALLOWED_USERS.split(",") if u.strip()] if ALLOWED_USERS else []
         for uid in targets:
             try:
                 await bot.send_message(chat_id=int(uid), text=f"🔔 Reminder: {reminder['message']}")

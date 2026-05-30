@@ -215,8 +215,16 @@ def get_models():
         models = []
         for line in lines:
             parts = line.split()
-            if parts:
-                models.append({"name": parts[0], "size": parts[2] + " " + parts[3] if len(parts) > 3 else ""})
+            if not parts:
+                continue
+            try:
+                name = parts[0]
+                # Ollama list format: NAME  ID  SIZE  MODIFIED
+                # Size is usually like "4.7 GB" (2 tokens) but format can vary
+                size = " ".join(parts[2:4]) if len(parts) >= 4 else (parts[2] if len(parts) >= 3 else "")
+                models.append({"name": name, "size": size})
+            except Exception:
+                continue
         return jsonify({"ok": True, "models": models})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
