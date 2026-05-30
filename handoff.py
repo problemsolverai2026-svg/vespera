@@ -362,6 +362,8 @@ def handle_message(message: str) -> dict:
             return {"response": response, "handled_by": "cloud", "complexity": complexity}
         # No cloud key — try local
         response, _ = respond_locally(message, memories, recent)
+        if not response:
+            response = "I'm having trouble reaching my local model right now. Please check that Ollama is running."
         return {"response": response, "handled_by": "local", "complexity": complexity}
 
     # Simple — local model

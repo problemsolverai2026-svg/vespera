@@ -235,7 +235,16 @@ def fire_reminder(reminder: dict):
         except Exception as e:
             log.error("Callback error: %s", e)
 
-    reschedule_or_complete(reminder)
+    try:
+        reschedule_or_complete(reminder)
+    except Exception as e:
+        log.error("reschedule_or_complete failed for %s — resetting claim so it can retry: %s", reminder["id"], e)
+        try:
+            with _sched_connect() as conn:
+                conn.execute("UPDATE reminders SET claimed_at=NULL WHERE id=?", (reminder["id"],))
+                conn.commit()
+        except Exception as reset_err:
+            log.error("Could not reset claimed_at for %s: %s", reminder["id"], reset_err)
 
 
 def register_callback(fn):

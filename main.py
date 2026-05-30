@@ -25,6 +25,7 @@ from memory.store import init_db, get_stats
 from config import BACKGROUND_LOOP_INTERVAL, CLEANUP_INTERVAL, PRUNING_INTERVAL_DAYS
 
 _shutdown = threading.Event()
+_lockfd = None  # module-level ref keeps fd open (and lock held) for process lifetime
 
 
 # ─────────────────────────────────────────────
@@ -157,6 +158,7 @@ def run_test():
 
 def main():
     # ── flock-based lock — atomic, SIGKILL-safe, no TOCTOU ──────────────────────
+    global _lockfd
     import fcntl
     lock_file = Path(__file__).parent / ".main.lock"
     _lockfd = open(lock_file, 'w')

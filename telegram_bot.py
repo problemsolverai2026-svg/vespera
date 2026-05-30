@@ -130,13 +130,24 @@ def run():
         await update.message.chat.send_action("typing")
         result = chat(text)
         response = result.get("response", "(no response)")
-        audio = result.get("audio_path")  # local path for direct file read
         await update.message.reply_text(response)
-        if audio:
+        audio_url = result.get("audio")  # relative URL e.g. /api/audio/<hex>.mp3
+        audio_bytes = None
+        if audio_url:
+            try:
+                base = _get_api_url()
+                headers = {"Authorization": f"Bearer {VESPERA_API_TOKEN}"} if VESPERA_API_TOKEN else {}
+                r = requests.get(f"{base}{audio_url}", headers=headers, timeout=15)
+                r.raise_for_status()
+                audio_bytes = r.content
+            except Exception as e:
+                log.warning("Failed to fetch TTS audio: %s", e)
+
+        if audio_bytes:
             try:
                 await update.message.chat.send_action("upload_voice")
-                with open(audio, "rb") as f:
-                    await update.message.reply_voice(voice=f)
+                import io
+                await update.message.reply_voice(voice=io.BytesIO(audio_bytes))
             except Exception as e:
                 log.warning(f"Voice send failed: {e}")
 
