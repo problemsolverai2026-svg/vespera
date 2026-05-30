@@ -45,15 +45,27 @@ fi
 # Start API in background
 python3 "$SCRIPT_DIR/api.py" &
 API_PID=$!
-sleep 3
 
-# Read actual API port (api.py writes this on startup)
+# Wait for API to write its port file (up to 15s)
+echo -n "Waiting for API..."
+for i in $(seq 1 30); do
+    if [ -f "$SCRIPT_DIR/.port" ]; then break; fi
+    sleep 0.5
+done
+
+# Read actual API port
 if [ -f "$SCRIPT_DIR/.port" ]; then
     API_PORT=$(cat "$SCRIPT_DIR/.port")
 else
     API_PORT=5055
 fi
-echo "API running on port $API_PORT"
+
+# Wait until API actually responds (up to 10s more)
+for i in $(seq 1 20); do
+    if curl -sf "http://localhost:$API_PORT/health" &>/dev/null; then break; fi
+    sleep 0.5
+done
+echo " ready on port $API_PORT"
 
 # Write port for UI to read
 echo "VITE_API_PORT=$API_PORT" > "$UI_DIR/.env.local"
@@ -74,7 +86,13 @@ if [ -d "$UI_DIR/node_modules" ]; then
     cd "$UI_DIR"
     npm run dev -- --port 3055 &
     UI_PID=$!
-    sleep 3
+    # Wait until UI dev server is up (up to 15s)
+    echo -n "Waiting for UI..."
+    for i in $(seq 1 30); do
+        if curl -sf "http://localhost:3055" &>/dev/null; then break; fi
+        sleep 0.5
+    done
+    echo " ready"
     echo ""
     echo "✅ Vespera is running!"
     echo "   Web UI: http://localhost:3055"

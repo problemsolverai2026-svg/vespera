@@ -15,6 +15,7 @@ Models are cached in ~/.vespera/models/ after first download.
 import os
 import uuid
 import asyncio
+import threading
 import requests
 from pathlib import Path
 from utils import get_logger
@@ -82,29 +83,43 @@ def _tts_edge(text: str) -> str | None:
         return None
 
 
-def _download_kokoro():
-    """Download kokoro model files if not already present."""
-    if KOKORO_MODEL_PATH.exists() and KOKORO_VOICES_PATH.exists():
-        return True
-    log.info("Kokoro model not found — downloading (~80MB, one time only)...")
-    try:
-        for url, path in [(KOKORO_MODEL_URL, KOKORO_MODEL_PATH), (KOKORO_VOICES_URL, KOKORO_VOICES_PATH)]:
-            log.info("Downloading %s...", path.name)
-            resp = requests.get(url, stream=True, timeout=120)
-            resp.raise_for_status()
-            with open(path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        log.info("Kokoro download complete.")
-        return True
-    except Exception as e:
-        log.error("Kokoro download failed: %s", e)
-        return False
+_kokoro_ready = threading.Event()
+_kokoro_lock  = threading.Lock()
+
+
+def _download_kokoro_bg():
+    """Download kokoro model files in a background thread."""
+    with _kokoro_lock:
+        if KOKORO_MODEL_PATH.exists() and KOKORO_VOICES_PATH.exists():
+            _kokoro_ready.set()
+            return
+        log.info("Kokoro model not found — downloading in background (~80MB, one time only)...")
+        try:
+            for url, path in [(KOKORO_MODEL_URL, KOKORO_MODEL_PATH), (KOKORO_VOICES_URL, KOKORO_VOICES_PATH)]:
+                log.info("Downloading %s...", path.name)
+                resp = requests.get(url, stream=True, timeout=120)
+                resp.raise_for_status()
+                with open(path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            log.info("Kokoro download complete.")
+            _kokoro_ready.set()
+        except Exception as e:
+            log.error("Kokoro download failed: %s", e)
+            # Leave event unset so _tts_kokoro skips gracefully
+
+
+# Kick off background download at import time if files are missing
+if KOKORO_MODEL_PATH.exists() and KOKORO_VOICES_PATH.exists():
+    _kokoro_ready.set()
+else:
+    threading.Thread(target=_download_kokoro_bg, daemon=True, name="kokoro-dl").start()
 
 
 def _tts_kokoro(text: str) -> str | None:
     try:
-        if not _download_kokoro():
+        if not _kokoro_ready.is_set():
+            log.debug("Kokoro not ready yet (downloading) — skipping")
             return None
         from kokoro_onnx import Kokoro
         import soundfile as sf
