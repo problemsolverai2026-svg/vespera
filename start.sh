@@ -57,8 +57,8 @@ if grep -q "TELEGRAM_BOT_TOKEN=." "$SCRIPT_DIR/.env" 2>/dev/null; then
     echo "Telegram bot started."
 fi
 
-# Start UI (Vite auto-picks next port if 3055 is taken)
-if [ -d "$UI_DIR" ]; then
+# Start UI — check node_modules exist (means npm install has been run)
+if [ -d "$UI_DIR/node_modules" ]; then
     cd "$UI_DIR"
     npm run dev -- --port 3055 &
     UI_PID=$!
@@ -69,11 +69,21 @@ if [ -d "$UI_DIR" ]; then
     echo "   API:    http://localhost:$API_PORT"
     echo ""
     echo "   Press Ctrl+C to stop everything."
+elif [ -d "$UI_DIR" ]; then
+    echo ""
+    echo "⚠️  Web UI found but dependencies not installed."
+    echo "   Run: cd ui && npm install && cd .."
+    echo "   Then restart with: ./start.sh"
+    echo ""
+    echo "✅ Vespera is running (API only)!"
+    echo "   API: http://localhost:$API_PORT"
+    echo ""
+    echo "   Press Ctrl+C to stop everything."
 else
     echo ""
     echo "✅ Vespera is running!"
     echo "   API: http://localhost:$API_PORT"
-    echo "   (No web UI found — skipping. See README for UI setup.)"
+    echo "   (No web UI found.)"
     echo ""
     echo "   Press Ctrl+C to stop everything."
 fi

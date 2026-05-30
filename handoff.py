@@ -13,7 +13,6 @@ Handle locally if:
   - Local model has clear context from memory
 """
 
-import json
 import requests
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
 from utils import get_logger
