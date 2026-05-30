@@ -33,6 +33,13 @@ ALLOW_SHELL = os.getenv("VESPERA_ALLOW_SHELL", "false").lower() == "true"
 _raw_paths  = os.getenv("VESPERA_ALLOW_PATHS", HOME)
 ALLOW_PATHS = [p.strip().replace("~", HOME) for p in _raw_paths.split(",")]
 
+# Ensure configured paths exist so file tools don't fail silently on first run
+for _p in ALLOW_PATHS:
+    try:
+        Path(_p).mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
 # API auth token — if set, all API requests must include header:
 # Authorization: Bearer <token>
 API_TOKEN = os.getenv("VESPERA_API_TOKEN", "")
