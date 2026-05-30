@@ -232,6 +232,10 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
                                 "tool_use_id": block["id"],
                                 "content": result,
                             })
+                    if not tool_results:
+                        # stop_reason was tool_use but no tool_use blocks found — break to avoid API error
+                        log.warning("Claude stop_reason=tool_use but no tool_use blocks in response")
+                        break
                     messages.append({"role": "user", "content": tool_results})
                     continue
 

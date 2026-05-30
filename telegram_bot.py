@@ -148,13 +148,16 @@ def run():
         lock_file = Path(__file__).parent / ".main.lock"
         if not lock_file.exists():
             return False
+        fd = None
         try:
             fd = open(lock_file, 'r')  # 'r' — does NOT truncate content
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fd.close()  # got lock = nobody holds it = main not running
-            return False
+            return False  # got lock = nobody holds it = main not running
         except IOError:
             return True  # lock held = main.py is running
+        finally:
+            if fd is not None:
+                fd.close()
 
     if not _main_running():
         _sched_shutdown = threading.Event()

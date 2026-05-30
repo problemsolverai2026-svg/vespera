@@ -6,6 +6,7 @@ Reviews 'recent' memories — promotes good ones to 'validated', prunes garbage.
 """
 
 import time
+import threading
 import requests
 from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory
@@ -80,15 +81,21 @@ def run_cleanup():
     log.info("Done — kept: %d, pruned: %d", kept, pruned)
 
 
-def run_loop():
+_shutdown = threading.Event()
+
+def run_loop(shutdown_event: threading.Event = None):
+    global _shutdown
+    if shutdown_event:
+        _shutdown = shutdown_event
     init_db()
     log.info("Started — model: %s — every %ss", OLLAMA_MODEL, CLEANUP_INTERVAL)
-    while True:
+    while not _shutdown.is_set():
         try:
             run_cleanup()
         except Exception as e:
             log.error("Error: %s", e)
-        time.sleep(CLEANUP_INTERVAL)
+        _shutdown.wait(CLEANUP_INTERVAL)
+    log.info("Stopped.")
 
 
 if __name__ == "__main__":

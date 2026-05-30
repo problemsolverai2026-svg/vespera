@@ -6,6 +6,7 @@ Stricter than cleanup crew — promotes the best to 'core', prunes the rest.
 """
 
 import time
+import threading
 import requests
 from config import get_component, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory
@@ -92,16 +93,22 @@ def run_pruning():
     log.info("Done — promoted: %d, kept: %d, deleted: %d", promoted, kept, pruned)
 
 
-def run_loop():
+_shutdown = threading.Event()
+
+def run_loop(shutdown_event: threading.Event = None):
+    global _shutdown
+    if shutdown_event:
+        _shutdown = shutdown_event
     init_db()
     interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
     log.info("Started — model: %s — every %d days", OLLAMA_MODEL, PRUNING_INTERVAL_DAYS)
-    while True:
+    while not _shutdown.is_set():
         try:
             run_pruning()
         except Exception as e:
             log.error("Error: %s", e)
-        time.sleep(interval)
+        _shutdown.wait(interval)
+    log.info("Stopped.")
 
 
 if __name__ == "__main__":
