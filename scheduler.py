@@ -54,19 +54,9 @@ def _sched_connect():
 
 
 def init_scheduler_db():
-    with _sched_connect() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS reminders (
-                id          TEXT PRIMARY KEY,
-                message     TEXT NOT NULL,
-                fire_at     TEXT NOT NULL,
-                recur       TEXT,
-                recur_rule  TEXT,
-                active      INTEGER DEFAULT 1,
-                created_at  TEXT NOT NULL
-            )
-        """)
-        conn.commit()
+    """Initialize the database using the canonical schema.sql (single source of truth)."""
+    from memory.store import init_db
+    init_db()
 
 
 # ─────────────────────────────────────────────
@@ -151,7 +141,11 @@ def reschedule_or_complete(reminder: dict):
 
     next_utc = next_fire.astimezone(timezone.utc)
     with _sched_connect() as conn:
-        conn.execute("UPDATE reminders SET fire_at=? WHERE id=?", (next_utc.isoformat(), reminder["id"]))
+        # Reset claimed_at so this reminder can be picked up again next cycle
+        conn.execute(
+            "UPDATE reminders SET fire_at=?, claimed_at=NULL WHERE id=?",
+            (next_utc.isoformat(), reminder["id"])
+        )
         conn.commit()
     log.info("Rescheduled '%s' → %s", reminder['message'], next_utc.strftime('%Y-%m-%d %H:%M %Z'))
 

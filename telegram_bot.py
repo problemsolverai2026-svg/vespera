@@ -125,7 +125,7 @@ def run():
         await update.message.chat.send_action("typing")
         result = chat(text)
         response = result.get("response", "(no response)")
-        audio = result.get("audio")
+        audio = result.get("audio_path")  # local path for direct file read
         await update.message.reply_text(response)
         if audio:
             try:

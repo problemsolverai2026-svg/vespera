@@ -162,7 +162,10 @@ def list_memories():
     auth_err = require_auth()
     if auth_err: return auth_err
     layer = request.args.get("layer")
-    limit = int(request.args.get("limit", 20))
+    try:
+        limit = int(request.args.get("limit", 20))
+    except (ValueError, TypeError):
+        limit = 20
     memories = get_memories(layer=layer, limit=limit)
     return jsonify(memories)
 
@@ -171,7 +174,10 @@ def list_memories():
 def list_conversations():
     auth_err = require_auth()
     if auth_err: return auth_err
-    limit = int(request.args.get("limit", 20))
+    try:
+        limit = int(request.args.get("limit", 20))
+    except (ValueError, TypeError):
+        limit = 20
     convs = get_recent_conversations(limit=limit)
     return jsonify(convs)
 
@@ -204,16 +210,21 @@ def chat():
 
     # Generate TTS if requested
     tts_path = None
+    tts_url  = None
     if data.get("tts", False):
         from tts import speak
         tts_path = speak(result["response"])
+        if tts_path:
+            import os as _os
+            tts_url = f"/api/audio/{_os.path.basename(tts_path)}"
 
     return jsonify({
         "ok": True,
         "response": result["response"],
         "handled_by": result["handled_by"],
         "complexity": result["complexity"],
-        "audio": tts_path,
+        "audio": tts_url,   # relative URL the browser can actually fetch
+        "audio_path": tts_path,  # local path for Telegram bot (reads file directly)
     })
 
 
@@ -250,6 +261,18 @@ def get_models():
         return jsonify({"ok": True, "models": models})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/audio/<path:filename>")
+def serve_audio(filename):
+    """Serve a TTS audio file by name. No auth — files are temp/random-named."""
+    from flask import send_from_directory
+    import re
+    # Only allow safe filenames (hex + extension)
+    if not re.match(r'^[a-f0-9]+\.(mp3|wav)$', filename):
+        return jsonify({"ok": False, "error": "Invalid filename"}), 400
+    tts_dir = "/tmp/vespera-tts"
+    return send_from_directory(tts_dir, filename)
 
 
 @app.route("/api/reminders", methods=["GET"])
@@ -377,5 +400,7 @@ if __name__ == "__main__":
     # Write actual port to a file so other components can find it
     (Path(__file__).parent / ".port").write_text(str(port))
 
-    print(f"[Vespera API] Running on http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # Default to localhost only — set VESPERA_BIND_HOST=0.0.0.0 to expose on the network
+    bind_host = os.getenv("VESPERA_BIND_HOST", "127.0.0.1")
+    print(f"[Vespera API] Running on http://{bind_host}:{port}")
+    app.run(host=bind_host, port=port, debug=False)

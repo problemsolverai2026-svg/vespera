@@ -58,9 +58,18 @@ ALLOWED_TELEGRAM_USERS = [u.strip() for u in _raw_users.split(",") if u.strip()]
 # ─────────────────────────────────────────────
 
 def path_allowed(path: str) -> bool:
-    """Check if a file path is within allowed directories."""
-    resolved = str(Path(path.replace("~", HOME)).resolve())
-    return any(resolved.startswith(p) for p in ALLOW_PATHS)
+    """Check if a file path is within allowed directories.
+    Uses proper path comparison to prevent traversal bypass via startswith.
+    """
+    resolved = Path(path.replace("~", HOME)).resolve()
+    for allowed in ALLOW_PATHS:
+        allowed_path = Path(allowed).resolve()
+        try:
+            resolved.relative_to(allowed_path)  # raises ValueError if not under allowed_path
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def telegram_user_allowed(user_id: int) -> bool:

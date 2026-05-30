@@ -69,7 +69,7 @@ COMPONENTS = {
         "description": "Cloud model. Only called when the handoff logic decides a message is too complex for the local model. This is where your best AI goes — Claude, Grok, GPT, Venice, etc. Costs money per call.",
         "role": "cloud",
         "provider":     os.getenv("CLOUD_PROVIDER",    "groq"),
-        "model":        os.getenv("CLOUD_MODEL",       "claude-3-5-sonnet-20241022"),
+        "model":        os.getenv("CLOUD_MODEL",       "llama3-8b-8192"),  # default matches groq provider
         "api_key":      os.getenv("CLOUD_API_KEY",     ""),
         "base_url":     os.getenv("CLOUD_BASE_URL",    ""),
     },
