@@ -30,7 +30,10 @@ except ImportError:
     pass
 
 import sqlite3
+from utils import get_logger
 from handoff import call_local
+
+log = get_logger("scheduler")
 
 DB_PATH  = Path(__file__).parent / "memory" / "vespera.db"
 TIMEZONE = os.getenv("VESPERA_TIMEZONE", "America/Chicago")
@@ -43,8 +46,16 @@ _callbacks = []  # list of functions to call when reminder fires: fn(reminder)
 # DB SETUP
 # ─────────────────────────────────────────────
 
+def _sched_connect():
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
 def init_scheduler_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id          TEXT PRIMARY KEY,
@@ -70,18 +81,18 @@ def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule:
         fire_at_utc = fire_at.astimezone(timezone.utc)
     else:
         fire_at_utc = fire_at.replace(tzinfo=timezone.utc)
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         conn.execute(
             "INSERT INTO reminders (id, message, fire_at, recur, recur_rule, active, created_at) VALUES (?,?,?,?,?,1,?)",
             (rid, message, fire_at_utc.isoformat(), recur, recur_rule, datetime.now(timezone.utc).isoformat())
         )
         conn.commit()
-    print(f"[Scheduler] Reminder set: '{message}' at {fire_at_utc.strftime('%Y-%m-%d %H:%M %Z')} (id: {rid})")
+    log.info("Reminder set: '%s' at %s (id: %s)", message, fire_at_utc.strftime('%Y-%m-%d %H:%M %Z'), rid)
     return rid
 
 
 def list_reminders() -> list[dict]:
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM reminders WHERE active=1 ORDER BY fire_at ASC"
@@ -90,7 +101,7 @@ def list_reminders() -> list[dict]:
 
 
 def cancel_reminder(rid: str) -> bool:
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         cur = conn.execute("UPDATE reminders SET active=0 WHERE id=?", (rid,))
         conn.commit()
     return cur.rowcount > 0
@@ -98,7 +109,7 @@ def cancel_reminder(rid: str) -> bool:
 
 def get_due_reminders() -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM reminders WHERE active=1 AND fire_at <= ?", (now,)
@@ -129,10 +140,10 @@ def reschedule_or_complete(reminder: dict):
         return
 
     next_utc = next_fire.astimezone(timezone.utc)
-    with sqlite3.connect(DB_PATH) as conn:
+    with _sched_connect() as conn:
         conn.execute("UPDATE reminders SET fire_at=? WHERE id=?", (next_utc.isoformat(), reminder["id"]))
         conn.commit()
-    print(f"[Scheduler] Rescheduled '{reminder['message']}' → {next_utc.strftime('%Y-%m-%d %H:%M %Z')}")
+    log.info("Rescheduled '%s' → %s", reminder['message'], next_utc.strftime('%Y-%m-%d %H:%M %Z'))
 
 
 # ─────────────────────────────────────────────
@@ -173,9 +184,10 @@ Rules:
         return None
 
     try:
-        start = raw.find("{")
-        end   = raw.rfind("}") + 1
-        data  = json.loads(raw[start:end])
+        from utils import parse_json_response
+        data = parse_json_response(raw)
+        if not data:
+            return None
         fire_at = datetime.fromisoformat(data["fire_at"])
         if fire_at.tzinfo is None:
             fire_at = fire_at.replace(tzinfo=ZoneInfo(TIMEZONE))
@@ -194,7 +206,7 @@ Rules:
 # ─────────────────────────────────────────────
 
 def fire_reminder(reminder: dict):
-    print(f"[Scheduler] 🔔 REMINDER: {reminder['message']}")
+    log.info("🔔 REMINDER: %s", reminder['message'])
 
     # TTS
     try:
@@ -208,7 +220,7 @@ def fire_reminder(reminder: dict):
         try:
             cb(reminder, audio)
         except Exception as e:
-            print(f"[Scheduler] Callback error: {e}")
+            log.error("Callback error: %s", e)
 
     reschedule_or_complete(reminder)
 
@@ -230,7 +242,7 @@ def run(shutdown_event: threading.Event = None):
         _shutdown = shutdown_event
 
     init_scheduler_db()
-    print("[Scheduler] Started — checking every 30 seconds.")
+    log.info("Started — checking every 30 seconds.")
 
     while not _shutdown.is_set():
         try:
@@ -238,10 +250,10 @@ def run(shutdown_event: threading.Event = None):
             for r in due:
                 fire_reminder(r)
         except Exception as e:
-            print(f"[Scheduler] Error: {e}")
+            log.error("Error: %s", e)
         _shutdown.wait(30)
 
-    print("[Scheduler] Stopped.")
+    log.info("Stopped.")
 
 
 if __name__ == "__main__":

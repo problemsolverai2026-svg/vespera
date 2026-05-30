@@ -15,10 +15,10 @@ Handle locally if:
 
 import json
 import requests
-from config import (
-    COMPONENTS,
-    COMPLEXITY_THRESHOLD,
-)
+from config import COMPONENTS, COMPLEXITY_THRESHOLD
+from utils import get_logger
+
+log = get_logger("handoff")
 
 _handoff = COMPONENTS["handoff"]
 OLLAMA_URL   = _handoff["ollama_url"]
@@ -121,18 +121,7 @@ def call_local(prompt: str) -> str | None:
         # /api/chat returns message.content, /api/generate returns response
         return (data.get("message", {}).get("content") or data.get("response", "")).strip()
     except Exception as e:
-        print(f"[Handoff] Local model error: {e}")
-        return None
-
-
-def parse_json(raw: str) -> dict | None:
-    try:
-        start = raw.find("{")
-        end   = raw.rfind("}") + 1
-        if start == -1 or end == 0:
-            return None
-        return json.loads(raw[start:end])
-    except Exception:
+        log.error("Local model error: %s", e)
         return None
 
 
@@ -141,10 +130,11 @@ def parse_json(raw: str) -> dict | None:
 # ─────────────────────────────────────────────
 
 def score_complexity(message: str) -> tuple[float, str, bool]:
+    from utils import parse_json_response
     raw = call_local(COMPLEXITY_CHECK_PROMPT.format(message=message))
     if not raw:
         return 0.5, "model unavailable", False
-    result = parse_json(raw)
+    result = parse_json_response(raw)
     if not result:
         return 0.5, "unparseable", False
     return float(result.get("complexity", 0.5)), result.get("reason", ""), bool(result.get("needs_search", False))
@@ -171,10 +161,10 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
     Currently a placeholder — wire up your preferred cloud API here.
     Supported: claude, grok, venice
     """
-    print(f"[Handoff] → Cloud ({CLOUD_PROVIDER} / {CLOUD_MODEL})")
+    log.info("→ Cloud (%s / %s)", CLOUD_PROVIDER, CLOUD_MODEL)
 
     if not CLOUD_API_KEY:
-        print("[Handoff] No cloud API key — falling back to local model.")
+        log.warning("No cloud API key — falling back to local.")
         response, _ = respond_locally(message, memories, recent)
         return response or "I can answer this better with a cloud AI key. Add CLOUD_API_KEY to your .env for smarter responses."
 
@@ -311,7 +301,7 @@ def respond_cloud(message: str, memories: str, recent: str) -> str:
 def handle_message(message: str) -> dict:
     memories, recent = get_context()
     complexity, reason, needs_search = score_complexity(message)
-    print(f"[Handoff] Complexity: {complexity:.2f} | search: {needs_search} — {reason}")
+    log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)
 
     # Web search first for real-time questions — always synthesize with cloud
     if needs_search:
@@ -350,7 +340,6 @@ if __name__ == "__main__":
         "Explain transformer attention vs recurrent neural networks in detail.",
     ]
     for msg in tests:
-        print(f"\n{'='*50}\nUSER: {msg}")
+        log.info("USER: %s", msg)
         result = handle_message(msg)
-        print(f"HANDLED BY: {result['handled_by']} ({result['complexity']:.2f})")
-        print(f"RESPONSE: {result['response'][:150]}")
+        log.info("HANDLED BY: %s (%.2f) | %s", result['handled_by'], result['complexity'], result['response'][:150])

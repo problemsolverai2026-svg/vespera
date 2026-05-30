@@ -13,6 +13,9 @@ import sys
 import time
 import threading
 import signal
+from utils import get_logger
+
+log = get_logger("vespera")
 import requests as req
 from datetime import datetime, timezone
 from memory.store import init_db, get_stats
@@ -28,12 +31,12 @@ _shutdown = threading.Event()
 def check_ollama() -> bool:
     try:
         req.get("http://localhost:11434", timeout=3)
-        print("[Vespera] ✅ Ollama is running.")
+        log.info("✅ Ollama is running.")
         return True
     except Exception:
-        print("[Vespera] ⚠️  Ollama is not running!")
-        print("[Vespera]    Open the Ollama app or run: ollama serve")
-        print("[Vespera]    Continuing in cloud-only mode.")
+        log.warning("⚠️  Ollama is not running!")
+        log.warning("   Open the Ollama app or run: ollama serve")
+        log.warning("   Continuing in cloud-only mode.")
         return False
 
 
@@ -44,42 +47,42 @@ def check_ollama() -> bool:
 def run_background_loop():
     from background_loop import think
     from memory.store import add_memory
-    print(f"[BackgroundLoop] Started — interval: {BACKGROUND_LOOP_INTERVAL}s")
+    log.info("BackgroundLoop started — interval: %ss", BACKGROUND_LOOP_INTERVAL)
     while not _shutdown.is_set():
         try:
             thought = think()
             if thought:
                 mem_id = add_memory(content=thought, layer="recent", source="background_loop")
-                print(f"[BackgroundLoop] Thought saved ({mem_id[:8]}): {thought[:80]}...")
+                log.info("BackgroundLoop thought saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
-            print(f"[BackgroundLoop] Error: {e}")
+            log.error("BackgroundLoop error: %s", e)
         _shutdown.wait(BACKGROUND_LOOP_INTERVAL)
-    print("[BackgroundLoop] Stopped.")
+    log.info("BackgroundLoop stopped.")
 
 
 def run_cleanup_crew():
     from cleanup_crew import run_cleanup
-    print(f"[CleanupCrew] Started — interval: {CLEANUP_INTERVAL}s")
+    log.info("CleanupCrew started — interval: %ss", CLEANUP_INTERVAL)
     while not _shutdown.is_set():
         try:
             run_cleanup()
         except Exception as e:
-            print(f"[CleanupCrew] Error: {e}")
+            log.error("CleanupCrew error: %s", e)
         _shutdown.wait(CLEANUP_INTERVAL)
-    print("[CleanupCrew] Stopped.")
+    log.info("CleanupCrew stopped.")
 
 
 def run_periodic_pruning():
     from periodic_pruning import run_pruning
     interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
-    print(f"[PeriodicPruning] Started — every {PRUNING_INTERVAL_DAYS} days")
+    log.info("PeriodicPruning started — every %d days", PRUNING_INTERVAL_DAYS)
     while not _shutdown.is_set():
         try:
             run_pruning()
         except Exception as e:
-            print(f"[PeriodicPruning] Error: {e}")
+            log.error("PeriodicPruning error: %s", e)
         _shutdown.wait(interval)
-    print("[PeriodicPruning] Stopped.")
+    log.info("PeriodicPruning stopped.")
 
 
 def run_scheduler():
@@ -93,7 +96,7 @@ def print_status():
         if not _shutdown.is_set():
             stats = get_stats()
             ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
-            print(f"\n[Vespera] {ts} — working:{stats['working']} recent:{stats['recent']} validated:{stats['validated']} core:{stats['core']}\n")
+            log.info("%s — working:%d recent:%d validated:%d core:%d", ts, stats['working'], stats['recent'], stats['validated'], stats['core'])
 
 
 # ─────────────────────────────────────────────
@@ -101,7 +104,7 @@ def print_status():
 # ─────────────────────────────────────────────
 
 def handle_shutdown(sig, frame):
-    print("\n[Vespera] Shutting down gracefully...")
+    log.info("Shutting down gracefully...")
     _shutdown.set()
 
 signal.signal(signal.SIGINT,  handle_shutdown)
@@ -113,31 +116,31 @@ signal.signal(signal.SIGTERM, handle_shutdown)
 # ─────────────────────────────────────────────
 
 def run_test():
-    print("[Vespera] Running test mode — one pass each...\n")
+    log.info("Running test mode — one pass each...")
     from background_loop import think
     from cleanup_crew import run_cleanup
     from periodic_pruning import run_pruning
     from memory.store import add_memory
 
-    print("--- Background Loop ---")
+    log.info("--- Background Loop ---")
     thought = think()
     if thought:
         add_memory(content=thought, layer="recent", source="background_loop")
-        print(f"Thought: {thought[:100]}...")
+        log.info("Thought: %s...", thought[:100])
     else:
-        print("No thought generated.")
+        log.info("No thought generated.")
 
-    print("\n--- Cleanup Crew ---")
+    log.info("--- Cleanup Crew ---")
     run_cleanup()
 
-    print("\n--- Periodic Pruning ---")
+    log.info("--- Periodic Pruning ---")
     run_pruning()
 
-    print("\n--- Stats ---")
+    log.info("--- Stats ---")
     for k, v in get_stats().items():
-        print(f"  {k}: {v}")
+        log.info("  %s: %s", k, v)
 
-    print("\n[Vespera] Test complete.")
+    log.info("Test complete.")
 
 
 # ─────────────────────────────────────────────
@@ -151,10 +154,10 @@ def main():
         run_test()
         return
 
-    print("=" * 50)
-    print("  🌙 Vespera Persistent AI Memory System")
-    print(f"  Started: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print("=" * 50)
+    log.info("=" * 50)
+    log.info("  🌙 Vespera Persistent AI Memory System")
+    log.info("  Started: %s", datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))
+    log.info("=" * 50)
 
     check_ollama()
 
@@ -169,12 +172,12 @@ def main():
     for t in threads:
         t.start()
 
-    print("[Vespera] All components running. Press Ctrl+C to stop.\n")
+    log.info("All components running. Press Ctrl+C to stop.")
 
     while not _shutdown.is_set():
         _shutdown.wait(1)
 
-    print("[Vespera] Goodbye.")
+    log.info("Goodbye.")
 
 
 if __name__ == "__main__":

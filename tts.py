@@ -17,6 +17,9 @@ import uuid
 import asyncio
 import requests
 from pathlib import Path
+from utils import get_logger
+
+log = get_logger("tts")
 
 try:
     from dotenv import load_dotenv
@@ -57,10 +60,10 @@ def _tts_venice(text: str) -> str | None:
         resp.raise_for_status()
         out = TTS_DIR / f"{uuid.uuid4().hex}.mp3"
         out.write_bytes(resp.content)
-        print(f"[TTS] Venice → {out.name}")
+        log.debug("Venice → %s", out.name)
         return str(out)
     except Exception as e:
-        print(f"[TTS] Venice error: {e}")
+        log.error("Venice error: %s", e)
         return None
 
 
@@ -72,10 +75,10 @@ def _tts_edge(text: str) -> str | None:
             c = edge_tts.Communicate(text, EDGE_VOICE)
             await c.save(str(out))
         asyncio.run(_run())
-        print(f"[TTS] edge-tts → {out.name}")
+        log.debug("edge-tts → %s", out.name)
         return str(out)
     except Exception as e:
-        print(f"[TTS] edge-tts error: {e}")
+        log.error("edge-tts error: %s", e)
         return None
 
 
@@ -83,19 +86,19 @@ def _download_kokoro():
     """Download kokoro model files if not already present."""
     if KOKORO_MODEL_PATH.exists() and KOKORO_VOICES_PATH.exists():
         return True
-    print("[TTS] Kokoro model not found — downloading (~80MB, one time only)...")
+    log.info("Kokoro model not found — downloading (~80MB, one time only)...")
     try:
         for url, path in [(KOKORO_MODEL_URL, KOKORO_MODEL_PATH), (KOKORO_VOICES_URL, KOKORO_VOICES_PATH)]:
-            print(f"[TTS] Downloading {path.name}...")
+            log.info("Downloading %s...", path.name)
             resp = requests.get(url, stream=True, timeout=120)
             resp.raise_for_status()
             with open(path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
-        print("[TTS] Kokoro download complete.")
+        log.info("Kokoro download complete.")
         return True
     except Exception as e:
-        print(f"[TTS] Kokoro download failed: {e}")
+        log.error("Kokoro download failed: %s", e)
         return False
 
 
@@ -110,10 +113,10 @@ def _tts_kokoro(text: str) -> str | None:
         samples, sr = kokoro.create(text, voice=KOKORO_VOICE, speed=1.0, lang="en-us")
         out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
         sf.write(str(out), samples, sr)
-        print(f"[TTS] kokoro-onnx → {out.name}")
+        log.debug("kokoro-onnx → %s", out.name)
         return str(out)
     except Exception as e:
-        print(f"[TTS] kokoro-onnx error: {e}")
+        log.error("kokoro-onnx error: %s", e)
         return None
 
 
@@ -125,10 +128,10 @@ def _tts_pyttsx3(text: str) -> str | None:
         out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
         engine.save_to_file(text, str(out))
         engine.runAndWait()
-        print(f"[TTS] pyttsx3 → {out.name}")
+        log.debug("pyttsx3 → %s", out.name)
         return str(out)
     except Exception as e:
-        print(f"[TTS] pyttsx3 error: {e}")
+        log.error("pyttsx3 error: %s", e)
         return None
 
 
@@ -173,4 +176,4 @@ def speak(text: str) -> str | None:
 
 if __name__ == "__main__":
     path = speak("Vespera TTS is working. Hello from your local AI assistant.")
-    print(f"Output: {path}")
+    log.info("Output: %s", path)

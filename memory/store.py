@@ -17,7 +17,9 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from utils import get_logger
+
+log = get_logger("memory.store")
 
 
 DB_PATH = Path(__file__).parent / "vespera.db"
@@ -34,7 +36,9 @@ def _now() -> str:
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode=WAL")   # allows concurrent readers + one writer
+    conn.execute("PRAGMA busy_timeout=5000")  # wait up to 5s instead of failing instantly
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -43,7 +47,7 @@ def init_db():
     schema = SCHEMA_PATH.read_text()
     with _connect() as conn:
         conn.executescript(schema)
-    print(f"[Vespera] Memory store initialized at {DB_PATH}")
+    log.info("Memory store initialized at %s", DB_PATH)
 
 
 # ─────────────────────────────────────────────

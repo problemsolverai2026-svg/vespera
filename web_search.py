@@ -13,6 +13,9 @@ Users with no API keys get DuckDuckGo automatically.
 
 import os
 import requests
+from utils import get_logger
+
+log = get_logger("web_search")
 
 # ─────────────────────────────────────────────
 # CONFIG
@@ -38,7 +41,7 @@ def _search_duckduckgo(query: str) -> list[dict]:
             results = list(ddgs.text(query, max_results=MAX_RESULTS))
         return [{"title": r.get("title",""), "snippet": r.get("body",""), "url": r.get("href","")} for r in results]
     except Exception as e:
-        print(f"[WebSearch] DuckDuckGo error: {e}")
+        log.error("DuckDuckGo error: %s", e)
         return []
 
 
@@ -54,7 +57,7 @@ def _search_brave(query: str) -> list[dict]:
         results = resp.json().get("web", {}).get("results", [])
         return [{"title": r.get("title",""), "snippet": r.get("description",""), "url": r.get("url","")} for r in results]
     except Exception as e:
-        print(f"[WebSearch] Brave error: {e}")
+        log.error("Brave error: %s", e)
         return []
 
 
@@ -70,7 +73,7 @@ def _search_venice(query: str) -> list[dict]:
         results = resp.json().get("results", [])
         return [{"title": r.get("title",""), "snippet": r.get("snippet",""), "url": r.get("url","")} for r in results]
     except Exception as e:
-        print(f"[WebSearch] Venice error: {e}")
+        log.error("Venice error: %s", e)
         return []
 
 
@@ -97,13 +100,13 @@ def search(query: str) -> str:
     if not results:
         # Fallback to DuckDuckGo if preferred provider failed
         if provider != "DuckDuckGo":
-            print(f"[WebSearch] {provider} failed, falling back to DuckDuckGo")
+            log.warning("%s failed, falling back to DuckDuckGo", provider)
             results = _search_duckduckgo(query)
 
     if not results:
         return ""
 
-    print(f"[WebSearch] {provider} — {len(results)} results for: {query}")
+    log.info("%s — %d results for: %s", provider, len(results), query)
     lines = []
     for i, r in enumerate(results, 1):
         lines.append(f"{i}. {r['title']}")
