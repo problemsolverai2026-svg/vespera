@@ -257,6 +257,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
 - **UI is basic** — model selector, API key page, and memory visualization are planned but not built
 - **No automated tests** — contributions welcome
+- **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 
 ---
 
