@@ -96,12 +96,28 @@ Answer directly based on the search results. Use today's date to determine what 
 # HELPERS
 # ─────────────────────────────────────────────
 
+# Patterns that could hijack model behavior if smuggled via stored memory or conversations
+_INJECTION_PATTERNS = [
+    "ignore previous", "ignore all previous", "disregard previous",
+    "new instructions", "system prompt", "you are now", "act as",
+    "forget everything", "override", "jailbreak",
+]
+
+
+def _sanitize(text: str, max_len: int) -> str:
+    """Truncate and strip potential injection attempts from memory/conversation content."""
+    truncated = text[:max_len]
+    if any(p in truncated.lower() for p in _INJECTION_PATTERNS):
+        return "[content removed — possible injection attempt]"
+    return truncated
+
+
 def get_context() -> tuple[str, str]:
     mems = get_memories(layer="core", limit=8) or get_memories(layer="validated", limit=8)
-    memory_str = "\n".join([f"- {m['content'][:150]}" for m in mems]) if mems else "No memories yet."
+    memory_str = "\n".join([f"- {_sanitize(m['content'], 150)}" for m in mems]) if mems else "No memories yet."
 
     convs = get_recent_conversations(limit=20)
-    conv_lines = [f"{c['role'].upper()}: {c['content'][:200]}" for c in reversed(convs)]
+    conv_lines = [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs)]
     recent_str = "\n".join(conv_lines) if conv_lines else "No recent conversation."
 
     return memory_str, recent_str

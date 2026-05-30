@@ -24,7 +24,7 @@ from pathlib import Path
 from config import COMPONENTS, get_component, COMPLEXITY_THRESHOLD, PRUNING_INTERVAL_DAYS
 from memory.store import (
     init_db, get_memories, get_recent_conversations,
-    get_stats, add_conversation,
+    get_stats, add_conversation, backup_db,
 )
 from security import check_api_token, get_status as security_status
 
@@ -277,6 +277,17 @@ def delete_reminder(rid):
     from scheduler import cancel_reminder
     ok = cancel_reminder(rid)
     return jsonify({"ok": ok})
+
+
+@app.route("/api/backup", methods=["POST"])
+def run_backup():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    from datetime import datetime
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = os.path.join(os.path.dirname(__file__), "backups", f"vespera_{ts}.db")
+    path = backup_db(dest)
+    return jsonify({"ok": True, "backup": path})
 
 
 @app.route("/api/cleanup/run", methods=["POST"])

@@ -6,9 +6,13 @@ generates brief thoughts, saves to 'recent' memory layer.
 Uses web search for technical gaps instead of calling the cloud model.
 """
 
+import os
 import time
+import psutil
 import requests
 from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
+
+CPU_THROTTLE_PERCENT = float(os.getenv("VESPERA_CPU_LIMIT", "80"))  # skip run if CPU above this %
 from web_search import search as _web_search
 from memory.store import init_db, add_memory, get_memories, get_recent_conversations
 from utils import get_logger
@@ -94,13 +98,17 @@ def think() -> str | None:
 
 def run_loop():
     init_db()
-    log.info("Started — model: %s — every %ss", OLLAMA_MODEL, RUN_INTERVAL)
+    log.info("Started — model: %s — every %ss — CPU limit: %s%%", OLLAMA_MODEL, RUN_INTERVAL, CPU_THROTTLE_PERCENT)
     while True:
         try:
-            thought = think()
-            if thought:
-                mem_id = add_memory(content=thought, layer="recent", source="background_loop")
-                log.info("Saved (%s): %s...", mem_id[:8], thought[:80])
+            cpu = psutil.cpu_percent(interval=1)
+            if cpu > CPU_THROTTLE_PERCENT:
+                log.debug("CPU at %.0f%% — skipping this pass (limit: %.0f%%)", cpu, CPU_THROTTLE_PERCENT)
+            else:
+                thought = think()
+                if thought:
+                    mem_id = add_memory(content=thought, layer="recent", source="background_loop")
+                    log.info("Saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
             log.error("Error: %s", e)
         time.sleep(RUN_INTERVAL)

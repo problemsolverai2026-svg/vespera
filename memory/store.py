@@ -227,6 +227,21 @@ def get_recent_conversations(limit: int = 20) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def backup_db(dest_path: str) -> str:
+    """Copy the live database to dest_path using SQLite's online backup API."""
+    import shutil
+    dest = Path(dest_path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    src_conn  = sqlite3.connect(DB_PATH)
+    dest_conn = sqlite3.connect(dest)
+    with dest_conn:
+        src_conn.backup(dest_conn)
+    src_conn.close()
+    dest_conn.close()
+    log.info("Database backed up to %s", dest)
+    return str(dest)
+
+
 def get_stats() -> dict:
     """Return a summary of the memory store state."""
     with _connect() as conn:

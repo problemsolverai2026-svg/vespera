@@ -232,6 +232,13 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 
 ---
 
+## Docs
+
+- [How memory works](docs/memory.md) — the nesting doll system explained
+- [Architecture diagram](docs/architecture.html) — full system overview
+
+---
+
 ## Security
 
 - **Shell execution** is disabled by default (`VESPERA_ALLOW_SHELL=false`). When enabled, the AI can run shell commands on your machine — only enable this if you understand the risk.

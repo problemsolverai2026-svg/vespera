@@ -26,6 +26,9 @@ __pycache__/
 .api.pid
 .telegram.pid
 
+# Backups
+backups/
+
 # UI — node deps and build output
 ui/node_modules/
 ui/dist/
