@@ -353,26 +353,26 @@ def handle_message(message: str) -> dict:
             today = datetime.now().strftime("%A, %B %d, %Y")
             formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results, message=message)
             response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
-            return {"response": response[:2000], "handled_by": "search+cloud", "complexity": complexity}
+            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "search+cloud", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local
     if complexity >= COMPLEXITY_THRESHOLD:
         if CLOUD_API_KEY:
             response = respond_cloud(message, memories, recent)
-            return {"response": response[:2000], "handled_by": "cloud", "complexity": complexity}
+            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "cloud", "complexity": complexity}
         # No cloud key — try local
         response, _ = respond_locally(message, memories, recent)
         if not response:
             response = "I'm having trouble reaching my local model right now. Please check that Ollama is running."
-        return {"response": response[:2000], "handled_by": "local", "complexity": complexity}
+        return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "local", "complexity": complexity}
 
     # Simple — local model
     response, needs_handoff = respond_locally(message, memories, recent)
     if needs_handoff:
         response = respond_cloud(message, memories, recent)
-        return {"response": response[:2000], "handled_by": "cloud", "complexity": complexity}
+        return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "cloud", "complexity": complexity}
 
-    return {"response": response[:2000], "handled_by": "local", "complexity": complexity}
+    return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "local", "complexity": complexity}
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ except ImportError:
 
 import sqlite3
 from utils import get_logger, _sanitize
-from handoff import call_local
+from handoff import call_local as _call_local
 
 log = get_logger("scheduler")
 
@@ -191,7 +191,7 @@ Rules:
     # complexity scoring overhead, and replace our structured prompt with the generic chat prompt.
     # Limitation: complex time expressions always use the local model; upgrade path is to call
     # respond_cloud() from handoff.py for a retry if the local parse fails.
-    raw = call_local(prompt)
+    raw = _call_local(prompt)
     if not raw:
         return None
 

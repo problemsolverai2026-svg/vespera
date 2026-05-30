@@ -357,43 +357,41 @@ def run_backup():
 
 @app.route("/api/cleanup/run", methods=["POST"])
 def run_cleanup():
+    """Run memory cleanup manually."""
     auth_err = require_auth()
     if auth_err: return auth_err
     acquired = _cleanup_lock.acquire(blocking=False)
     if not acquired:
         return jsonify({"ok": False, "error": "Cleanup already running"}), 409
+
     def _run_and_release():
         try:
             from cleanup_crew import run_cleanup as _run
             _run()
         finally:
             _cleanup_lock.release()
-    try:
-        threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
-    except Exception as e:
-        _cleanup_lock.release()
-        return jsonify({"ok": False, "error": f"Failed to start cleanup thread: {e}"}), 500
+
+    threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
     return jsonify({"ok": True, "status": "started"}), 202
 
 
 @app.route("/api/prune/run", methods=["POST"])
 def run_pruning():
+    """Run memory pruning manually."""
     auth_err = require_auth()
     if auth_err: return auth_err
     acquired = _pruning_lock.acquire(blocking=False)
     if not acquired:
         return jsonify({"ok": False, "error": "Pruning already running"}), 409
+
     def _run_and_release():
         try:
             from periodic_pruning import run_pruning as _run
             _run()
         finally:
             _pruning_lock.release()
-    try:
-        threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
-    except Exception as e:
-        _pruning_lock.release()
-        return jsonify({"ok": False, "error": f"Failed to start pruning thread: {e}"}), 500
+
+    threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
     return jsonify({"ok": True, "status": "started"}), 202
 
 
