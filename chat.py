@@ -11,6 +11,9 @@ Usage:
 
 from memory.store import init_db, add_conversation, get_stats
 from handoff import handle_message
+from utils import get_logger
+
+log = get_logger("chat")
 
 BANNER = """
 ╔══════════════════════════════════════╗
@@ -75,17 +78,18 @@ def main():
         add_conversation(role="user", content=user_input)
 
         # Get response
-        result = handle_message(user_input)
-        response  = result["response"]
-        handled   = result["handled_by"]
-        complexity = result["complexity"]
-
-        # Show response
-        tag = f"[local {complexity:.0%}]" if handled == "local" else f"[cloud {complexity:.0%}]"
-        print(f"\nVespera {tag}: {response}\n")
-
-        # Log assistant response
-        add_conversation(role="assistant", content=response)
+        try:
+            result = handle_message(user_input)
+            response = result.get("response", "")
+            handled   = result.get("handled_by", "")
+            complexity = result.get("complexity", 0.0)
+            tag = f"[local {complexity:.0%}]" if handled == "local" else f"[cloud {complexity:.0%}]"
+            print(f"\nVespera {tag}: {response}\n")
+            # Log assistant response
+            add_conversation(role="assistant", content=response)
+        except Exception as e:
+            print(f"\n[Error: {e} — try again]\n")
+            log.error("CLI handle_message error: %s", e)
 
 
 if __name__ == "__main__":
