@@ -6,6 +6,12 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UI_DIR="${VESPERA_UI_DIR:-$SCRIPT_DIR/ui}"
+VENV_DIR="$SCRIPT_DIR/venv"
+
+# Activate virtual environment if it exists
+if [ -d "$VENV_DIR" ]; then
+    source "$VENV_DIR/bin/activate"
+fi
 
 echo "Starting Vespera..."
 

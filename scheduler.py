@@ -107,13 +107,24 @@ def cancel_reminder(rid: str) -> bool:
 
 
 def get_due_reminders() -> list[dict]:
+    """Return due reminders, atomically claiming each so only one process fires it."""
     now = datetime.now(timezone.utc).isoformat()
     with _sched_connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM reminders WHERE active=1 AND fire_at <= ?", (now,)
+            "SELECT * FROM reminders WHERE active=1 AND fire_at <= ? AND claimed_at IS NULL",
+            (now,)
         ).fetchall()
-    return [dict(r) for r in rows]
+        claimed = []
+        for row in rows:
+            cur = conn.execute(
+                "UPDATE reminders SET claimed_at=? WHERE id=? AND claimed_at IS NULL",
+                (now, row["id"])
+            )
+            if cur.rowcount > 0:  # this process won the claim
+                claimed.append(dict(row))
+        conn.commit()
+    return claimed
 
 
 def reschedule_or_complete(reminder: dict):

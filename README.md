@@ -269,6 +269,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - [ ] Automated test suite
 - [ ] Long-run stability hardening
 - [ ] Multi-user support
+- [ ] Federated memory sharing — opt-in exchange of validated memories between Vespera instances, so knowledge can spread across nodes while personal data stays local
 
 ---
 

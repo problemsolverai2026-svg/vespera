@@ -99,6 +99,11 @@ def update_component(name):
         return jsonify({"ok": False, "error": f"Unknown component: {name}"}), 404
 
     data = request.json or {}
+
+    # Sanitize values — strip newlines to prevent env injection
+    def _safe_value(v: str) -> str:
+        return str(v).replace("\n", "").replace("\r", "").strip()
+
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 
     # Read existing .env
@@ -120,16 +125,16 @@ def update_component(name):
 
     if "model" in data:
         key = f"{prefix}_OLLAMA_MODEL" if name != "cloud" else "CLOUD_MODEL"
-        set_env(key, data["model"])
+        set_env(key, _safe_value(data["model"]))
         updated.append("model")
 
     if "api_key" in data:
         key = f"{prefix}_API_KEY" if name != "cloud" else "CLOUD_API_KEY"
-        set_env(key, data["api_key"])
+        set_env(key, _safe_value(data["api_key"]))
         updated.append("api_key")
 
     if "provider" in data and name == "cloud":
-        set_env("CLOUD_PROVIDER", data["provider"])
+        set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
         updated.append("provider")
 
     # Atomic write — write to temp file then rename so a crash can't corrupt .env
@@ -274,6 +279,8 @@ def set_reminder():
 
 @app.route("/api/reminders/<rid>", methods=["DELETE"])
 def delete_reminder(rid):
+    auth_err = require_auth()
+    if auth_err: return auth_err
     from scheduler import cancel_reminder
     ok = cancel_reminder(rid)
     return jsonify({"ok": ok})
@@ -292,6 +299,8 @@ def run_backup():
 
 @app.route("/api/cleanup/run", methods=["POST"])
 def run_cleanup():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     from cleanup_crew import run_cleanup as _run
     _run()
     return jsonify({"ok": True, "stats": get_stats()})
@@ -299,6 +308,8 @@ def run_cleanup():
 
 @app.route("/api/prune/run", methods=["POST"])
 def run_pruning():
+    auth_err = require_auth()
+    if auth_err: return auth_err
     from periodic_pruning import run_pruning as _run
     _run()
     return jsonify({"ok": True, "stats": get_stats()})

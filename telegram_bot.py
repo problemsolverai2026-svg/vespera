@@ -66,8 +66,10 @@ log = logging.getLogger(__name__)
 
 
 def is_allowed(user_id: int) -> bool:
+    # Default DENY if no allowlist is configured — bot should never be open to strangers
     if not ALLOWED_USERS:
-        return True
+        log.warning("TELEGRAM_ALLOWED_USERS not set — all users blocked. Add your ID to .env to use the bot.")
+        return False
     return str(user_id) in [u.strip() for u in ALLOWED_USERS.split(",")]
 
 
@@ -133,9 +135,17 @@ def run():
             except Exception as e:
                 log.warning(f"Voice send failed: {e}")
 
-    # Register reminder delivery callback
-    from scheduler import register_callback
+    # Register reminder delivery callback and run scheduler in this process
+    # so Telegram reminders are delivered even when running as a separate process
+    import threading
+    from scheduler import register_callback, run as scheduler_run
     register_callback(send_reminder)
+    _sched_shutdown = threading.Event()
+    _sched_thread = threading.Thread(
+        target=scheduler_run, args=(_sched_shutdown,), daemon=True, name="Scheduler"
+    )
+    _sched_thread.start()
+    log.info("Scheduler started in background thread.")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

@@ -30,7 +30,8 @@ HOME = str(Path.home())
 ALLOW_SHELL = os.getenv("VESPERA_ALLOW_SHELL", "false").lower() == "true"
 
 # Allowed file paths — defaults to home directory
-_raw_paths  = os.getenv("VESPERA_ALLOW_PATHS", HOME)
+_DEFAULT_ALLOW_PATH = str(Path.home() / ".vespera" / "workspace")
+_raw_paths  = os.getenv("VESPERA_ALLOW_PATHS", _DEFAULT_ALLOW_PATH)
 ALLOW_PATHS = [p.strip().replace("~", HOME) for p in _raw_paths.split(",")]
 
 # Ensure configured paths exist so file tools don't fail silently on first run
@@ -63,9 +64,9 @@ def path_allowed(path: str) -> bool:
 
 
 def telegram_user_allowed(user_id: int) -> bool:
-    """Check if a Telegram user ID is allowed."""
+    """Check if a Telegram user ID is allowed. Defaults to DENY if no list set."""
     if not ALLOWED_TELEGRAM_USERS:
-        return True  # open if no allowlist configured
+        return False
     return str(user_id) in ALLOWED_TELEGRAM_USERS
 
 

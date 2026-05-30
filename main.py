@@ -45,15 +45,20 @@ def check_ollama() -> bool:
 # ─────────────────────────────────────────────
 
 def run_background_loop():
-    from background_loop import think
+    import psutil
+    from background_loop import think, CPU_THROTTLE_PERCENT
     from memory.store import add_memory
-    log.info("BackgroundLoop started — interval: %ss", BACKGROUND_LOOP_INTERVAL)
+    log.info("BackgroundLoop started — interval: %ss — CPU limit: %s%%", BACKGROUND_LOOP_INTERVAL, CPU_THROTTLE_PERCENT)
     while not _shutdown.is_set():
         try:
-            thought = think()
-            if thought:
-                mem_id = add_memory(content=thought, layer="recent", source="background_loop")
-                log.info("BackgroundLoop thought saved (%s): %s...", mem_id[:8], thought[:80])
+            cpu = psutil.cpu_percent(interval=1)
+            if cpu > CPU_THROTTLE_PERCENT:
+                log.debug("BackgroundLoop: CPU at %.0f%% — skipping pass", cpu)
+            else:
+                thought = think()
+                if thought:
+                    mem_id = add_memory(content=thought, layer="recent", source="background_loop")
+                    log.info("BackgroundLoop thought saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
             log.error("BackgroundLoop error: %s", e)
         _shutdown.wait(BACKGROUND_LOOP_INTERVAL)

@@ -68,7 +68,7 @@ COMPONENTS = {
     "cloud": {
         "description": "Cloud model. Only called when the handoff logic decides a message is too complex for the local model. This is where your best AI goes — Claude, Grok, GPT, Venice, etc. Costs money per call.",
         "role": "cloud",
-        "provider":     os.getenv("CLOUD_PROVIDER",    "claude"),
+        "provider":     os.getenv("CLOUD_PROVIDER",    "groq"),
         "model":        os.getenv("CLOUD_MODEL",       "claude-3-5-sonnet-20241022"),
         "api_key":      os.getenv("CLOUD_API_KEY",     ""),
         "base_url":     os.getenv("CLOUD_BASE_URL",    ""),
@@ -96,15 +96,31 @@ VENICE_SEARCH_URL = "https://api.venice.ai/api/v1/augment/search"
 # TIMING
 # ─────────────────────────────────────────────
 
-BACKGROUND_LOOP_INTERVAL = int(os.getenv("BACKGROUND_LOOP_INTERVAL", "180"))
-CLEANUP_INTERVAL         = int(os.getenv("CLEANUP_INTERVAL",         "300"))
-PRUNING_INTERVAL_DAYS    = int(os.getenv("PRUNING_INTERVAL_DAYS",    "3"))
+def _int(key: str, default: int) -> int:
+    val = os.getenv(key, str(default))
+    try:
+        return int(val)
+    except ValueError:
+        print(f"[config] WARNING: {key}='{val}' is not a valid integer — using default {default}")
+        return default
+
+def _float(key: str, default: float) -> float:
+    val = os.getenv(key, str(default))
+    try:
+        return float(val)
+    except ValueError:
+        print(f"[config] WARNING: {key}='{val}' is not a valid number — using default {default}")
+        return default
+
+BACKGROUND_LOOP_INTERVAL = _int("BACKGROUND_LOOP_INTERVAL", 180)
+CLEANUP_INTERVAL         = _int("CLEANUP_INTERVAL",         300)
+PRUNING_INTERVAL_DAYS    = _int("PRUNING_INTERVAL_DAYS",    3)
 
 # ─────────────────────────────────────────────
 # TUNING
 # ─────────────────────────────────────────────
 
-COMPLEXITY_THRESHOLD = float(os.getenv("COMPLEXITY_THRESHOLD", "0.65"))
-MAX_THOUGHT_LENGTH   = int(os.getenv("MAX_THOUGHT_LENGTH",     "300"))
-CLEANUP_BATCH_SIZE   = int(os.getenv("CLEANUP_BATCH_SIZE",     "5"))
-PRUNING_BATCH_SIZE   = int(os.getenv("PRUNING_BATCH_SIZE",     "20"))
+COMPLEXITY_THRESHOLD = _float("COMPLEXITY_THRESHOLD", 0.65)
+MAX_THOUGHT_LENGTH   = _int("MAX_THOUGHT_LENGTH",     300)
+CLEANUP_BATCH_SIZE   = _int("CLEANUP_BATCH_SIZE",     5)
+PRUNING_BATCH_SIZE   = _int("PRUNING_BATCH_SIZE",     20)

@@ -50,6 +50,20 @@ CREATE TABLE IF NOT EXISTS prune_log (
     content     TEXT NOT NULL                -- keep a copy of what was pruned
 );
 
+-- Reminders (scheduler)
+CREATE TABLE IF NOT EXISTS reminders (
+    id          TEXT PRIMARY KEY,
+    message     TEXT NOT NULL,
+    fire_at     TEXT NOT NULL,          -- UTC ISO-8601
+    recur       TEXT,                   -- daily | weekly | hourly | null
+    recur_rule  TEXT,
+    active      INTEGER DEFAULT 1,
+    claimed_at  TEXT,                   -- set atomically when a process claims this reminder
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_fire ON reminders(fire_at, active);
+
 -- Indexes for fast lookup
 CREATE INDEX IF NOT EXISTS idx_memories_layer   ON memories(layer);
 CREATE INDEX IF NOT EXISTS idx_memories_pruned  ON memories(pruned);

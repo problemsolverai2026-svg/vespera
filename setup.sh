@@ -5,6 +5,7 @@
 # ─────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/venv"
 
 echo "🌙 Vespera Setup"
 echo ""
@@ -29,6 +30,13 @@ if ! curl -s http://localhost:11434 &>/dev/null; then
     exit 1
 fi
 
+# ── Virtual environment ───────────────────────
+if [ ! -d "$VENV_DIR" ]; then
+    echo "📦 Creating Python virtual environment..."
+    python3 -m venv "$VENV_DIR"
+fi
+source "$VENV_DIR/bin/activate"
+
 # ── Pull default model if not present ─────────
 if ! ollama list 2>/dev/null | grep -q "llama3.2:3b"; then
     echo "📦 Pulling llama3.2:3b (2GB, one time only)..."
@@ -37,7 +45,7 @@ fi
 
 # ── Python dependencies ───────────────────────
 echo "📦 Installing Python dependencies..."
-pip3 install -r "$SCRIPT_DIR/requirements.txt" --quiet
+pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
 
 # ── UI dependencies ───────────────────────────
 if [ -d "$SCRIPT_DIR/ui" ]; then
@@ -64,7 +72,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
             echo "   Loaded: $(basename "$dest")"
         done
         echo "   ✅ Vespera will now start automatically on login."
-        echo "   (To remove: run launchctl unload ~/Library/LaunchAgents/com.vespera.*.plist)"
+        echo "   (To remove: launchctl unload ~/Library/LaunchAgents/com.vespera.*.plist)"
     fi
 fi
 
