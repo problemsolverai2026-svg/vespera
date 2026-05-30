@@ -92,7 +92,7 @@ def check_api_token(request_token: str) -> bool:
     if not API_TOKEN:
         return True
     import hmac
-    return hmac.compare_digest(request_token.encode(), API_TOKEN.encode())
+    return hmac.compare_digest(request_token, API_TOKEN)
 
 
 def get_status() -> dict:

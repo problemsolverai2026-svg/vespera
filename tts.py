@@ -90,8 +90,19 @@ def _tts_edge(text: str) -> str | None:
         return None
 
 
-_kokoro_ready = threading.Event()
-_kokoro_lock  = threading.Lock()
+_kokoro_ready    = threading.Event()
+_kokoro_lock     = threading.Lock()
+_kokoro_instance = None
+
+
+def _get_kokoro():
+    global _kokoro_instance
+    if _kokoro_instance is None:
+        with _kokoro_lock:
+            if _kokoro_instance is None:
+                from kokoro_onnx import Kokoro
+                _kokoro_instance = Kokoro(str(KOKORO_MODEL_PATH), str(KOKORO_VOICES_PATH))
+    return _kokoro_instance
 
 
 def _download_kokoro_bg():
@@ -140,10 +151,9 @@ def _tts_kokoro(text: str) -> str | None:
         if not _kokoro_ready.is_set():
             log.debug("Kokoro not ready yet (downloading) — skipping")
             return None
-        from kokoro_onnx import Kokoro
         import soundfile as sf
         import numpy as np
-        kokoro = Kokoro(str(KOKORO_MODEL_PATH), str(KOKORO_VOICES_PATH))
+        kokoro = _get_kokoro()
         samples, sr = kokoro.create(text, voice=KOKORO_VOICE, speed=1.0, lang="en-us")
         out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
         sf.write(str(out), samples, sr)

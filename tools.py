@@ -10,8 +10,10 @@ Tools available:
 
 Security:
   - VESPERA_ALLOW_SHELL=true required to enable shell (off by default)
-  - Paths are restricted to user home directory by default
-  - Set VESPERA_ALLOW_PATHS to expand allowed paths (comma-separated)
+  - ALLOW_PATHS restricts the *working directory* of shell commands only.
+    File paths referenced inside the command itself are NOT path-checked.
+    Treat ALLOW_SHELL=true as granting full user-level filesystem access.
+  - read_file and write_file ARE path-checked via path_allowed().
 """
 
 import os

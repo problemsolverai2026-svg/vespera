@@ -204,7 +204,7 @@ Rules:
         recur_raw = data.get("recur")
         recur = recur_raw if recur_raw in _VALID_RECUR else None
         return {
-            "message":  data.get("message", text),
+            "message":  _sanitize(str(data.get("message", text)), 500),
             "fire_at":  fire_at,
             "recur":    recur,
         }

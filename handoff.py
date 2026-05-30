@@ -28,6 +28,7 @@ _cloud = COMPONENTS["cloud"]
 CLOUD_PROVIDER = _cloud["provider"]
 CLOUD_MODEL    = _cloud["model"]
 CLOUD_API_KEY  = _cloud["api_key"]
+CLOUD_BASE_URL = _cloud.get("base_url", "")
 from memory.store import get_memories, get_recent_conversations
 from web_search import search as web_search
 from tools import TOOL_DEFINITIONS, run_tool
@@ -297,8 +298,9 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
     # OpenAI
     if CLOUD_PROVIDER == "openai":
         try:
+            _openai_base = CLOUD_BASE_URL.rstrip("/") if CLOUD_BASE_URL else "https://api.openai.com/v1"
             resp = requests.post(
-                "https://api.openai.com/v1/chat/completions",
+                f"{_openai_base}/chat/completions",
                 headers={"Authorization": f"Bearer {CLOUD_API_KEY}"},
                 json={
                     "model": CLOUD_MODEL or "gpt-4o-mini",

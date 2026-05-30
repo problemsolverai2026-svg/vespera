@@ -31,7 +31,9 @@ from security import check_api_token, get_status as security_status
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB request body limit
-_env_lock = threading.Lock()
+_env_lock     = threading.Lock()
+_cleanup_lock = threading.Lock()
+_pruning_lock = threading.Lock()
 
 @app.errorhandler(413)
 def request_too_large(e):
@@ -358,8 +360,16 @@ def run_backup():
 def run_cleanup():
     auth_err = require_auth()
     if auth_err: return auth_err
-    from cleanup_crew import run_cleanup as _run
-    threading.Thread(target=_run, daemon=True, name="manual-cleanup").start()
+    acquired = _cleanup_lock.acquire(blocking=False)
+    if not acquired:
+        return jsonify({"ok": False, "error": "Cleanup already running"}), 409
+    def _run_and_release():
+        try:
+            from cleanup_crew import run_cleanup as _run
+            _run()
+        finally:
+            _cleanup_lock.release()
+    threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
     return jsonify({"ok": True, "status": "started"}), 202
 
 
@@ -367,8 +377,16 @@ def run_cleanup():
 def run_pruning():
     auth_err = require_auth()
     if auth_err: return auth_err
-    from periodic_pruning import run_pruning as _run
-    threading.Thread(target=_run, daemon=True, name="manual-prune").start()
+    acquired = _pruning_lock.acquire(blocking=False)
+    if not acquired:
+        return jsonify({"ok": False, "error": "Pruning already running"}), 409
+    def _run_and_release():
+        try:
+            from periodic_pruning import run_pruning as _run
+            _run()
+        finally:
+            _pruning_lock.release()
+    threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
     return jsonify({"ok": True, "status": "started"}), 202
 
 

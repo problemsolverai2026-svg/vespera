@@ -151,7 +151,7 @@ def prune_memory(memory_id: str, reason: str, pruned_by: str = "cleanup_crew"):
     """Soft-delete a memory and log it."""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT content FROM memories WHERE id = ?", (memory_id,)
+            "SELECT content FROM memories WHERE id = ? AND pruned = 0", (memory_id,)
         ).fetchone()
 
         if not row:
