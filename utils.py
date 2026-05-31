@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import requests as _requests
 
 
 # ─────────────────────────────────────────────
@@ -121,3 +122,48 @@ def parse_json_response(raw: str) -> dict | None:
         return json.loads(raw[start:end])
     except json.JSONDecodeError:
         return None
+
+
+# ─────────────────────────────────────────────
+# SHARED OLLAMA CALLER
+# ─────────────────────────────────────────────
+
+_ollama_log = get_logger("ollama")
+
+
+def call_ollama(
+    url: str,
+    model: str,
+    prompt: str,
+    temperature: float = 0.3,
+    num_predict: int = None,
+    timeout: int = 60,
+) -> str | None:
+    """Call a local Ollama model and return its text response, or None on error."""
+    resp = None
+    options: dict = {"temperature": temperature}
+    if num_predict is not None:
+        options["num_predict"] = num_predict
+    try:
+        resp = _requests.post(
+            url,
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": options,
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return (data.get("message", {}).get("content") or data.get("response", "")).strip()
+    except Exception as e:
+        _ollama_log.error("Model error (%s): %s", model, e)
+        return None
+    finally:
+        try:
+            if resp:
+                resp.close()
+        except Exception:
+            pass

@@ -40,25 +40,8 @@ Respond in JSON only:
 
 
 def call_local(prompt: str) -> str | None:
-    resp = None
-    try:
-        resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"temperature": 0.1, "num_predict": 150},
-        }, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        return (data.get("message", {}).get("content") or data.get("response", "")).strip()
-    except Exception as e:
-        log.error("Model error: %s", e)
-        return None
-    finally:
-        try:
-            resp.close()
-        except Exception:
-            pass
+    from utils import call_ollama
+    return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.1, num_predict=150)
 
 
 def get_core_context() -> str:

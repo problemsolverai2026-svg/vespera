@@ -112,26 +112,8 @@ def get_context() -> tuple[str, str]:
 
 
 def call_local(prompt: str) -> str | None:
-    resp = None
-    try:
-        resp = requests.post(OLLAMA_URL, json={
-            "model": OLLAMA_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"temperature": 0.4, "num_predict": 300}
-        }, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        # /api/chat returns message.content, /api/generate returns response
-        return (data.get("message", {}).get("content") or data.get("response", "")).strip()
-    except Exception as e:
-        log.error("Local model error: %s", e)
-        return None
-    finally:
-        try:
-            resp.close()
-        except Exception:
-            pass
+    from utils import call_ollama
+    return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.4, num_predict=300)
 
 
 # ─────────────────────────────────────────────
@@ -268,7 +250,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                     if block.get("type") == "text":
                         return block["text"]
                 log.warning("Claude unexpected stop_reason=%r — content: %s", stop_reason, data.get("content"))
-                return f"[Cloud error: unexpected stop_reason '{stop_reason}']"
+                return "[I ran into an issue with the cloud model. Please try again.]"
             log.error("Claude tool call loop exhausted after 10 iterations")
             return "[I ran into an issue with the cloud model. Please try again.]"
         except Exception as e:

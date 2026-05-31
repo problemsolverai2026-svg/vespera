@@ -57,6 +57,7 @@ def _sched_connect():
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
+        conn.commit()
     except Exception:
         conn.rollback()
         raise
@@ -236,12 +237,22 @@ def fire_reminder(reminder: dict):
     except Exception:
         audio = None
 
-    # Notify all registered callbacks (Telegram, etc.)
+    # Notify all registered callbacks (Telegram, etc.) in background threads
+    # so a slow/blocked callback never delays the next reminder from firing.
     for cb in _callbacks:
-        try:
-            cb(reminder, audio)
-        except Exception as e:
-            log.error("Callback error: %s", e)
+        threading.Thread(
+            target=_safe_callback,
+            args=(cb, reminder, audio),
+            daemon=True,
+            name="reminder-callback",
+        ).start()
+
+
+def _safe_callback(fn, reminder: dict, audio):
+    try:
+        fn(reminder, audio)
+    except Exception as e:
+        log.error("Callback error: %s", e)
 
     try:
         reschedule_or_complete(reminder)
