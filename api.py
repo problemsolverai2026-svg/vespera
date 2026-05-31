@@ -71,14 +71,44 @@ def request_too_large(e):
     return jsonify({"ok": False, "error": "Request body too large (max 1 MB)"}), 413
 # Build CORS origins dynamically from configured ports
 _ui_port = os.getenv("UI_PORT", "3055")
-CORS(app, origins=[
+_cors_origins = [
     f"http://localhost:{_ui_port}",
     f"http://127.0.0.1:{_ui_port}",
-    "http://localhost:5173",   # Vite default dev port
-    "http://127.0.0.1:5173",
-])
+]
+if os.getenv("VESPERA_DEV", "false").lower() == "true":
+    # Dev-only: allow Vite's default port (set VESPERA_DEV=true in .env for local UI dev)
+    _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
+CORS(app, origins=_cors_origins)
 
 init_db()
+
+
+def _safe_env_value(v: str, max_len: int = 2048) -> str:
+    """Sanitize a value before writing it into .env.
+    Strips characters that would cause injection if the file is ever bash-sourced.
+    """
+    s = str(v)[:max_len]          # length cap
+    return (
+        s
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace("$",  "")        # prevent shell variable/command expansion
+        .replace("`",  "")        # prevent backtick command substitution
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .strip()
+    )
+
+
+_TRUST_PROXY = os.getenv("TRUST_PROXY", "false").lower() == "true"
+
+def _get_client_ip() -> str:
+    """Return the real client IP, honouring X-Forwarded-For only when TRUST_PROXY=true."""
+    if _TRUST_PROXY:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
 
 def require_auth():
@@ -146,34 +176,16 @@ def update_component(name):
         return jsonify({"ok": False, "error": f"Unknown component: {name}"}), 404
 
     data = request.json or {}
-
-    # Sanitize values — strip newlines to prevent env injection
-    def _safe_value(v: str) -> str:
-        # Strip newlines (env injection). Escape \ before " so the quoted
-        # write format KEY="value" is never broken by a literal \ or ".
-        return (
-            str(v)
-            .replace("\n", "")
-            .replace("\r", "")
-            .replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .strip()
-        )
-
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 
     with _env_lock:
-        # Read existing .env
         env_lines = []
         if os.path.exists(env_path):
             with open(env_path) as f:
                 env_lines = f.readlines()
 
         def set_env(key, value):
-            """Update or append a key in .env lines.
-            Values are double-quoted so characters like '#' are preserved
-            correctly by python-dotenv (unquoted '#' starts a comment).
-            """
+            """Update or append a key in .env lines."""
             line = f'{key}="{value}"\n'
             for i, existing in enumerate(env_lines):
                 if existing.startswith(f"{key}="):
@@ -194,15 +206,15 @@ def update_component(name):
 
         if "model" in data:
             key = f"{prefix}_MODEL" if name == "cloud" else f"{prefix}_OLLAMA_MODEL"
-            set_env(key, _safe_value(data["model"]))
+            set_env(key, _safe_env_value(data["model"]))
             updated.append("model")
 
         if "api_key" in data:
-            set_env(f"{prefix}_API_KEY", _safe_value(data["api_key"]))
+            set_env(f"{prefix}_API_KEY", _safe_env_value(data["api_key"]))
             updated.append("api_key")
 
         if "provider" in data and name == "cloud":
-            set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
+            set_env("CLOUD_PROVIDER", _safe_env_value(data["provider"]))
             updated.append("provider")
 
         # Atomic write (0o600) — secrets must not be world-readable
@@ -268,7 +280,7 @@ def chat():
     auth_err = require_auth()
     if auth_err:
         return auth_err
-    if not _check_rate_limit(request.remote_addr or "unknown"):
+    if not _check_rate_limit(_get_client_ip()):
         return jsonify({"ok": False, "error": f"Rate limit exceeded ({RATE_LIMIT_MAX_CALLS} requests/minute)"}), 429
     data = request.json or {}
     message = data.get("message", "").strip()
@@ -382,7 +394,7 @@ def update_settings():
                 env_lines = f.readlines()
 
         def set_env(key, value):
-            safe = _safe_value(str(value))
+            safe = _safe_env_value(str(value))
             line = f'{key}="{safe}"\n'
             for i, existing in enumerate(env_lines):
                 if existing.startswith(f"{key}="):
@@ -390,7 +402,13 @@ def update_settings():
                     return
             env_lines.append(line)
 
-        # Interval keys must be >= 1 to avoid tight loops
+        # Per-key bounds: (min, max). None = no bound on that side.
+        _KEY_BOUNDS = {
+            "BACKGROUND_LOOP_INTERVAL": (1,   86400),   # 1s – 24h
+            "CHAT_RATE_LIMIT":          (1,   1000),    # 1 – 1000 req/min
+            "VESPERA_MAX_TOKENS":       (1,   32768),   # 1 – 32k tokens
+            "COMPLEXITY_THRESHOLD":     (0.0, 1.0),     # 0.0 – 1.0
+        }
         _INTERVAL_KEYS = {"BACKGROUND_LOOP_INTERVAL", "CHAT_RATE_LIMIT", "VESPERA_MAX_TOKENS"}
 
         updated = []
@@ -404,11 +422,11 @@ def update_settings():
                     value = float(value) if schema["type"] == "float" else int(value)
                     if not _math.isfinite(value):
                         return jsonify({"ok": False, "error": f"{key} must be a finite number"}), 400
-                    min_val = 1 if key in _INTERVAL_KEYS else 0
-                    if value < min_val:
-                        return jsonify({"ok": False, "error": f"{key} must be >= {min_val}"}), 400
-                    if key == "COMPLEXITY_THRESHOLD" and value > 1.0:
-                        return jsonify({"ok": False, "error": "COMPLEXITY_THRESHOLD must be 0.0–1.0"}), 400
+                    bounds = _KEY_BOUNDS.get(key)
+                    if bounds:
+                        lo, hi = bounds
+                        if value < lo or value > hi:
+                            return jsonify({"ok": False, "error": f"{key} must be {lo}–{hi}"}), 400
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)
@@ -464,7 +482,8 @@ def get_models():
                 continue
         return jsonify({"ok": True, "models": models})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        app.logger.error("get_models failed: %s", e)
+        return jsonify({"ok": False, "error": "Model list unavailable"}), 503
 
 
 @app.route("/api/audio/<filename>")
@@ -511,6 +530,9 @@ def set_reminder():
 def delete_reminder(rid):
     auth_err = require_auth()
     if auth_err: return auth_err
+    import re
+    if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', rid, re.IGNORECASE):
+        return jsonify({"ok": False, "error": "Invalid reminder id"}), 400
     from scheduler import cancel_reminder
     ok = cancel_reminder(rid)
     return jsonify({"ok": ok})
@@ -526,8 +548,9 @@ def run_backup():
     try:
         path = backup_db(dest)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-    return jsonify({"ok": True, "backup": path})
+        app.logger.error("Backup failed: %s", e)
+        return jsonify({"ok": False, "error": "Backup failed"}), 500
+    return jsonify({"ok": True, "backup": os.path.basename(path)})
 
 
 @app.route("/api/cleanup/run", methods=["POST"])

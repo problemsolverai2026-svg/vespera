@@ -166,7 +166,15 @@ def main():
 
     log.info("All components running. Press Ctrl+C to stop.")
 
-    _shutdown.wait()  # block until signal fires
+    try:
+        _shutdown.wait()  # block until signal fires
+    finally:
+        # Release lock and remove lock file on clean exit
+        try:
+            _lockfd.close()
+            lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     log.info("Goodbye.")
 
