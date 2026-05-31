@@ -51,6 +51,7 @@ Result: {result}"""
 
 
 def call_local(prompt: str) -> str | None:
+    resp = None
     try:
         resp = requests.post(OLLAMA_URL, json={
             "model": OLLAMA_MODEL,
@@ -64,6 +65,11 @@ def call_local(prompt: str) -> str | None:
     except Exception as e:
         log.error("Model error: %s", e)
         return None
+    finally:
+        try:
+            resp.close()
+        except Exception:
+            pass
 
 
 def think() -> str | None:

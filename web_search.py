@@ -47,6 +47,7 @@ def _search_duckduckgo(query: str) -> list[dict]:
 
 
 def _search_brave(query: str) -> list[dict]:
+    resp = None
     try:
         resp = requests.get(
             BRAVE_SEARCH_URL,
@@ -60,9 +61,15 @@ def _search_brave(query: str) -> list[dict]:
     except Exception as e:
         log.error("Brave error: %s", e)
         return []
+    finally:
+        try:
+            if resp: resp.close()
+        except Exception:
+            pass
 
 
 def _search_venice(query: str) -> list[dict]:
+    resp = None
     try:
         resp = requests.post(
             VENICE_SEARCH_URL,
@@ -76,6 +83,11 @@ def _search_venice(query: str) -> list[dict]:
     except Exception as e:
         log.error("Venice error: %s", e)
         return []
+    finally:
+        try:
+            if resp: resp.close()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────
@@ -93,7 +105,6 @@ _INJECTION_RE = re.compile(
     r"|you\s+are\s+now"
     r"|act\s+as\b"
     r"|forget\s+everything"
-    r"|override\b"
     r"|jailbreak"
     r")",
     re.IGNORECASE,

@@ -18,9 +18,11 @@ import os
 import uuid
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from dateutil.relativedelta import relativedelta
 
 try:
     from dotenv import load_dotenv
@@ -45,13 +47,22 @@ _callbacks = []  # list of functions to call when reminder fires: fn(reminder)
 # DB SETUP
 # ─────────────────────────────────────────────
 
+@contextmanager
 def _sched_connect():
+    """Open scheduler DB connection, commit on success, rollback on error, always close."""
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_scheduler_db():
@@ -118,8 +129,6 @@ def get_due_reminders() -> list[dict]:
 
 def reschedule_or_complete(reminder: dict):
     """After firing: reschedule if recurring, else deactivate."""
-    from dateutil.relativedelta import relativedelta
-
     recur = reminder.get("recur")
     if not recur:
         cancel_reminder(reminder["id"])

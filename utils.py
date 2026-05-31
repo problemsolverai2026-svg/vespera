@@ -23,7 +23,6 @@ _INJECTION_RE = re.compile(
     r"|you\s+are\s+now"
     r"|act\s+as\b"
     r"|forget\s+everything"
-    r"|override\b"
     r"|jailbreak"
     r")",
     re.IGNORECASE,

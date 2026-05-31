@@ -15,6 +15,7 @@ Memories can be linked to each other — related, expands, contradicts, referenc
 import sqlite3
 import json
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from utils import get_logger
@@ -33,13 +34,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _connect() -> sqlite3.Connection:
+@contextmanager
+def _connect():
+    """Open a SQLite connection, yield it, commit on success, rollback on error,
+    and always close — preventing file descriptor leaks under long-running threads."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")   # allows concurrent readers + one writer
     conn.execute("PRAGMA busy_timeout=5000")  # wait up to 5s instead of failing instantly
     conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -139,10 +150,15 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
             return False
 
         next_layer = LAYERS[current_idx + 1]
-        conn.execute(
-            "UPDATE memories SET layer = ?, trust_score = COALESCE(?, trust_score), updated_at = ? WHERE id = ?",
-            (next_layer, new_trust_score, _now(), memory_id),
+        # Atomic claim: include current layer in WHERE so a concurrent caller
+        # that already promoted this memory gets rowcount=0 and exits cleanly.
+        cur = conn.execute(
+            "UPDATE memories SET layer = ?, trust_score = COALESCE(?, trust_score), updated_at = ? WHERE id = ? AND layer = ?",
+            (next_layer, new_trust_score, _now(), memory_id, current),
         )
+        if cur.rowcount == 0:
+            log.debug("Memory %s already promoted by concurrent caller.", memory_id[:8])
+            return False
         log.info("Promoted %s: %s → %s", memory_id[:8], current, next_layer)
         return True
 

@@ -9,6 +9,9 @@
         <string>/usr/bin/python3</string>
         <string>REPLACE_WITH_YOUR_PATH/vespera/api.py</string>
     </array>
+    <!-- Note: api.py auto-detects gunicorn and uses it if installed.
+         After running setup.sh, gunicorn will be available in your venv.
+         No plist changes needed — the script handles it. -->
     <key>WorkingDirectory</key>
     <string>REPLACE_WITH_YOUR_PATH/vespera</string>
     <key>RunAtLoad</key>

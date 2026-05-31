@@ -35,6 +35,27 @@ _env_lock     = threading.Lock()
 _cleanup_lock = threading.Lock()
 _pruning_lock = threading.Lock()
 
+# ── Rate limiter for /api/chat ─────────────────────────────────────────────
+# Allows at most RATE_LIMIT_MAX_CALLS calls within RATE_LIMIT_WINDOW_SECONDS.
+import time as _time
+_rate_lock     = threading.Lock()
+_rate_calls: list = []
+RATE_LIMIT_MAX_CALLS      = int(os.getenv("CHAT_RATE_LIMIT", "30"))
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+def _check_rate_limit() -> bool:
+    """Return True if the request is allowed, False if rate-limited."""
+    now = _time.time()
+    with _rate_lock:
+        # Drop calls outside the window
+        cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+        while _rate_calls and _rate_calls[0] < cutoff:
+            _rate_calls.pop(0)
+        if len(_rate_calls) >= RATE_LIMIT_MAX_CALLS:
+            return False
+        _rate_calls.append(now)
+        return True
+
 @app.errorhandler(413)
 def request_too_large(e):
     return jsonify({"ok": False, "error": "Request body too large (max 1 MB)"}), 413
@@ -118,7 +139,16 @@ def update_component(name):
 
     # Sanitize values — strip newlines to prevent env injection
     def _safe_value(v: str) -> str:
-        return str(v).replace("\n", "").replace("\r", "").replace("#", "").strip()
+        # Strip newlines (env injection). Escape \ before " so the quoted
+        # write format KEY="value" is never broken by a literal \ or ".
+        return (
+            str(v)
+            .replace("\n", "")
+            .replace("\r", "")
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .strip()
+        )
 
     env_path = os.path.join(os.path.dirname(__file__), ".env")
 
@@ -130,12 +160,16 @@ def update_component(name):
                 env_lines = f.readlines()
 
         def set_env(key, value):
-            """Update or append a key in .env lines."""
-            for i, line in enumerate(env_lines):
-                if line.startswith(f"{key}="):
-                    env_lines[i] = f"{key}={value}\n"
+            """Update or append a key in .env lines.
+            Values are double-quoted so characters like '#' are preserved
+            correctly by python-dotenv (unquoted '#' starts a comment).
+            """
+            line = f'{key}="{value}"\n'
+            for i, existing in enumerate(env_lines):
+                if existing.startswith(f"{key}="):
+                    env_lines[i] = line
                     return
-            env_lines.append(f"{key}={value}\n")
+            env_lines.append(line)
 
         # Map component name to the env var prefix config.py actually reads
         _ENV_PREFIX = {
@@ -222,6 +256,8 @@ def chat():
     auth_err = require_auth()
     if auth_err:
         return auth_err
+    if not _check_rate_limit():
+        return jsonify({"ok": False, "error": f"Rate limit exceeded ({RATE_LIMIT_MAX_CALLS} requests/minute)"}), 429
     data = request.json or {}
     message = data.get("message", "").strip()
     if not message:
@@ -261,6 +297,125 @@ def chat():
 
 
 # ─────────────────────────────────────────────
+# SETTINGS
+# ─────────────────────────────────────────────
+
+# Settings that users can change through the UI.
+# Each entry: env_var, label, description, type, default
+_SETTINGS_SCHEMA = [
+    {
+        "key":         "TTS_RETENTION_HOURS",
+        "label":       "TTS Audio Retention",
+        "description": "How many hours to keep generated voice audio files before auto-deleting them. 0 = never delete. Default: 168 (1 week).",
+        "type":        "number",
+        "default":     168,
+    },
+    {
+        "key":         "CHAT_RATE_LIMIT",
+        "label":       "Chat Rate Limit",
+        "description": "Maximum number of /api/chat requests allowed per minute. Default: 30.",
+        "type":        "number",
+        "default":     30,
+    },
+    {
+        "key":         "VESPERA_MAX_TOKENS",
+        "label":       "Max Cloud AI Tokens",
+        "description": "Maximum tokens per cloud AI response (cost control). Default: 1024.",
+        "type":        "number",
+        "default":     1024,
+    },
+    {
+        "key":         "COMPLEXITY_THRESHOLD",
+        "label":       "Cloud AI Complexity Threshold",
+        "description": "Score (0.0–1.0) at which messages are sent to the cloud AI. Lower = more cloud usage. Default: 0.65.",
+        "type":        "float",
+        "default":     0.65,
+    },
+    {
+        "key":         "BACKGROUND_LOOP_INTERVAL",
+        "label":       "Background Loop Interval (seconds)",
+        "description": "How often the background thinking loop runs. Default: 180 seconds.",
+        "type":        "number",
+        "default":     180,
+    },
+]
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    """Return current values for all user-facing settings."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    result = []
+    for s in _SETTINGS_SCHEMA:
+        raw = os.getenv(s["key"])
+        if raw is not None:
+            try:
+                value = float(raw) if s["type"] == "float" else int(raw)
+            except ValueError:
+                value = s["default"]
+        else:
+            value = s["default"]
+        result.append({**s, "value": value})
+    return jsonify({"ok": True, "settings": result})
+
+
+@app.route("/api/settings", methods=["POST"])
+def update_settings():
+    """Update one or more settings. Writes to .env. Restart required to apply."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
+
+    data = request.json or {}
+    valid_keys = {s["key"] for s in _SETTINGS_SCHEMA}
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+
+    with _env_lock:
+        env_lines = []
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                env_lines = f.readlines()
+
+        def set_env(key, value):
+            line = f'{key}="{value}"\n'
+            for i, existing in enumerate(env_lines):
+                if existing.startswith(f"{key}="):
+                    env_lines[i] = line
+                    return
+            env_lines.append(line)
+
+        updated = []
+        for key, value in data.items():
+            if key not in valid_keys:
+                return jsonify({"ok": False, "error": f"Unknown setting: {key}"}), 400
+            # Validate type
+            try:
+                schema = next(s for s in _SETTINGS_SCHEMA if s["key"] == key)
+                if schema["type"] in ("number", "float"):
+                    value = float(value) if schema["type"] == "float" else int(value)
+                    if value < 0:
+                        return jsonify({"ok": False, "error": f"{key} must be >= 0"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
+            set_env(key, value)
+            updated.append(key)
+
+        tmp_path = env_path + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                f.writelines(env_lines)
+            os.replace(tmp_path, env_path)
+        except Exception as e:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
+
+    return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
+
+
+# ─────────────────────────────────────────────
 # MANUAL TRIGGERS
 # ─────────────────────────────────────────────
 
@@ -295,15 +450,18 @@ def get_models():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route("/api/audio/<path:filename>")
+@app.route("/api/audio/<filename>")
 def serve_audio(filename):
-    """Serve a TTS audio file by name. No auth — files are temp/random-named."""
+    """Serve a TTS audio file by name."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
     from flask import send_from_directory
     import re
     # Only allow safe filenames (hex + extension)
     if not re.match(r'^[a-f0-9]+\.(mp3|wav)$', filename):
         return jsonify({"ok": False, "error": "Invalid filename"}), 400
-    tts_dir = "/tmp/vespera-tts"
+    from pathlib import Path as _Path
+    tts_dir = str(_Path.home() / ".vespera" / "tts")
     return send_from_directory(tts_dir, filename)
 
 
@@ -402,10 +560,11 @@ def run_pruning():
 if __name__ == "__main__":
     import socket
     import signal
-    import atexit
+    import subprocess
+    import shutil
+    import fcntl
 
     # ── PID lock: ensure only one instance runs at a time ──────────────
-    import fcntl
     lock_file = Path(__file__).parent / ".api.lock"
     _lockfd = open(lock_file, 'w')
     try:
@@ -415,7 +574,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
     _lockfd.write(str(os.getpid()))
     _lockfd.flush()
-    # flock is released automatically by the OS on process exit (including SIGKILL)
+    # flock released automatically by OS on exit (including SIGKILL)
 
     def _handle_sigterm(*_):
         raise SystemExit(0)
@@ -438,10 +597,47 @@ if __name__ == "__main__":
         print(f"[Vespera API] Port {base_port} in use — using {port} instead.")
         print(f"[Vespera API] Tip: set API_PORT={port} in your .env to make this permanent.")
 
-    # Write actual port to a file so other components can find it
+    # Write actual port so start.sh / telegram_bot.py can find it
     (Path(__file__).parent / ".port").write_text(str(port))
 
-    # Default to localhost only — set VESPERA_BIND_HOST=0.0.0.0 to expose on the network
     bind_host = os.getenv("VESPERA_BIND_HOST", "127.0.0.1")
-    print(f"[Vespera API] Running on http://{bind_host}:{port}")
-    app.run(host=bind_host, port=port, debug=False)
+
+    # Threading locks (_cleanup_lock, _pruning_lock, _env_lock) are in-process only.
+    # Multi-worker gunicorn would share no lock state across workers — clamp to 1.
+    try:
+        _requested_workers = int(os.getenv("VESPERA_WORKERS", "1"))
+    except ValueError:
+        print("[Vespera API] WARNING: VESPERA_WORKERS is not a valid integer — using 1.")
+        _requested_workers = 1
+    if _requested_workers != 1:
+        print(f"[Vespera API] WARNING: VESPERA_WORKERS={_requested_workers} ignored — must be 1 (in-process locks are not multi-worker safe). Using 1.")
+    workers = 1
+
+    # Locate gunicorn: system PATH first, then local venv (for users who ran setup.sh)
+    gunicorn_bin = (
+        shutil.which("gunicorn")
+        or (str(Path(__file__).parent / "venv" / "bin" / "gunicorn")
+            if (Path(__file__).parent / "venv" / "bin" / "gunicorn").is_file() else None)
+    )
+
+    if gunicorn_bin:
+        print(f"[Vespera API] Starting via gunicorn on http://{bind_host}:{port}")
+        # Clear FD_CLOEXEC so gunicorn's master process inherits the lock fd
+        # and holds it for its lifetime — prevents a second invocation spawning
+        # a duplicate gunicorn on port+1.
+        import fcntl as _fcntl2
+        flags = _fcntl2.fcntl(_lockfd.fileno(), _fcntl2.F_GETFD)
+        _fcntl2.fcntl(_lockfd.fileno(), _fcntl2.F_SETFD, flags & ~_fcntl2.FD_CLOEXEC)
+        os.execv(gunicorn_bin, [
+            gunicorn_bin,
+            f"--bind={bind_host}:{port}",
+            f"--workers={workers}",
+            "--timeout=120",
+            "--access-logfile=-",
+            "api:app",
+        ])
+    else:
+        print(f"[Vespera API] gunicorn not found — falling back to Werkzeug dev server.")
+        print(f"[Vespera API] Install it: pip install gunicorn")
+        print(f"[Vespera API] Running on http://{bind_host}:{port}")
+        app.run(host=bind_host, port=port, debug=False)

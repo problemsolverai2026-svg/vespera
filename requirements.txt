@@ -4,6 +4,7 @@ python-dateutil>=2.8.0,<3.0
 python-dotenv>=1.0.0,<2.0
 flask>=3.0.0,<4.0
 flask-cors>=4.0.0,<7.0
+gunicorn>=21.0.0,<24.0      # production WSGI server — replaces Werkzeug dev server
 
 # Telegram bot
 python-telegram-bot>=21.0,<23.0

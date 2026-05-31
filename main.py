@@ -49,50 +49,18 @@ def check_ollama() -> bool:
 # ─────────────────────────────────────────────
 
 def run_background_loop():
-    import psutil
-    from background_loop import think, CPU_THROTTLE_PERCENT
-    from memory.store import add_memory
-    log.info("BackgroundLoop started — interval: %ss — CPU limit: %s%%", BACKGROUND_LOOP_INTERVAL, CPU_THROTTLE_PERCENT)
-    while not _shutdown.is_set():
-        try:
-            cpu = psutil.cpu_percent(interval=1)
-            if cpu > CPU_THROTTLE_PERCENT:
-                log.debug("BackgroundLoop: CPU at %.0f%% — skipping pass", cpu)
-            else:
-                thought = think()
-                if thought:
-                    thought = _sanitize(thought, 500)  # sanitize model output before storage
-                    mem_id = add_memory(content=thought, layer="recent", source="background_loop")
-                    log.info("BackgroundLoop thought saved (%s): %s...", mem_id[:8], thought[:80])
-        except Exception as e:
-            log.error("BackgroundLoop error: %s", e)
-        _shutdown.wait(BACKGROUND_LOOP_INTERVAL)
-    log.info("BackgroundLoop stopped.")
+    from background_loop import run_loop
+    run_loop(_shutdown)
 
 
 def run_cleanup_crew():
-    from cleanup_crew import run_cleanup
-    log.info("CleanupCrew started — interval: %ss", CLEANUP_INTERVAL)
-    while not _shutdown.is_set():
-        try:
-            run_cleanup()
-        except Exception as e:
-            log.error("CleanupCrew error: %s", e)
-        _shutdown.wait(CLEANUP_INTERVAL)
-    log.info("CleanupCrew stopped.")
+    from cleanup_crew import run_loop
+    run_loop(_shutdown)
 
 
 def run_periodic_pruning():
-    from periodic_pruning import run_pruning
-    interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
-    log.info("PeriodicPruning started — every %d days", PRUNING_INTERVAL_DAYS)
-    while not _shutdown.is_set():
-        try:
-            run_pruning()
-        except Exception as e:
-            log.error("PeriodicPruning error: %s", e)
-        _shutdown.wait(interval)
-    log.info("PeriodicPruning stopped.")
+    from periodic_pruning import run_loop
+    run_loop(_shutdown)
 
 
 def run_scheduler():

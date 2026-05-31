@@ -112,6 +112,7 @@ def get_context() -> tuple[str, str]:
 
 
 def call_local(prompt: str) -> str | None:
+    resp = None
     try:
         resp = requests.post(OLLAMA_URL, json={
             "model": OLLAMA_MODEL,
@@ -126,6 +127,11 @@ def call_local(prompt: str) -> str | None:
     except Exception as e:
         log.error("Local model error: %s", e)
         return None
+    finally:
+        try:
+            resp.close()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────
@@ -194,23 +200,30 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             messages = [{"role": "user", "content": prompt}]
             # Tool loop — Claude can call tools multiple times
             for _ in range(10):  # max 10 tool calls per response
-                resp = requests.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": CLOUD_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": CLOUD_MODEL,
-                        "max_tokens": _MAX_TOKENS,
-                        "tools": TOOL_DEFINITIONS,
-                        "messages": messages,
-                    },
-                    timeout=60,
-                )
-                resp.raise_for_status()
-                data = resp.json()
+                resp = None
+                try:
+                    resp = requests.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": CLOUD_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": CLOUD_MODEL,
+                            "max_tokens": _MAX_TOKENS,
+                            "tools": TOOL_DEFINITIONS,
+                            "messages": messages,
+                        },
+                        timeout=60,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                finally:
+                    try:
+                        if resp: resp.close()
+                    except Exception:
+                        pass
                 stop_reason = data.get("stop_reason")
 
                 # No tool call — return the text
@@ -262,6 +275,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
 
     # Venice (OpenAI-compatible)
     if CLOUD_PROVIDER == "venice":
+        resp = None
         try:
             resp = requests.post(
                 "https://api.venice.ai/api/v1/chat/completions",
@@ -277,9 +291,15 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
             return f"[Cloud error: {e}]"
+        finally:
+            try:
+                if resp: resp.close()
+            except Exception:
+                pass
 
     # Groq (OpenAI-compatible)
     if CLOUD_PROVIDER == "groq":
+        resp = None
         try:
             resp = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -295,9 +315,15 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
             return f"[Cloud error: {e}]"
+        finally:
+            try:
+                if resp: resp.close()
+            except Exception:
+                pass
 
     # OpenAI
     if CLOUD_PROVIDER == "openai":
+        resp = None
         try:
             _openai_base = CLOUD_BASE_URL.rstrip("/") if CLOUD_BASE_URL else "https://api.openai.com/v1"
             resp = requests.post(
@@ -314,9 +340,15 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
             return f"[Cloud error: {e}]"
+        finally:
+            try:
+                if resp: resp.close()
+            except Exception:
+                pass
 
     # Gemini
     if CLOUD_PROVIDER == "gemini":
+        resp = None
         try:
             from urllib.parse import quote
             model = CLOUD_MODEL or "gemini-1.5-flash"
@@ -333,6 +365,11 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
             return f"[Cloud error: {e}]"
+        finally:
+            try:
+                if resp: resp.close()
+            except Exception:
+                pass
 
     return f"[Cloud provider '{CLOUD_PROVIDER}' not supported. Use: claude, groq, openai, gemini, venice]"
 

@@ -57,7 +57,11 @@ VESPERA_API_TOKEN  = os.getenv("VESPERA_API_TOKEN", "")
 def _get_api_url():
     port_file = Path(__file__).parent / ".port"
     if port_file.exists():
-        return f"http://localhost:{port_file.read_text().strip()}"
+        try:
+            port = int(port_file.read_text().strip())
+            return f"http://localhost:{port}"
+        except (ValueError, OSError):
+            pass  # fall through to default
     return os.getenv("VESPERA_API_URL", "http://localhost:5055")
 
 API_URL = _get_api_url()
@@ -80,9 +84,16 @@ def chat(message: str) -> dict:
         headers = {}
         if VESPERA_API_TOKEN:
             headers["Authorization"] = f"Bearer {VESPERA_API_TOKEN}"
+        resp = None
         resp = requests.post(f"{url}/api/chat", json={"message": message, "tts": True}, headers=headers, timeout=60)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp.raise_for_status()
+            return resp.json()
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
     except Exception as e:
         return {"response": f"Error reaching Vespera API: {e}", "audio": None}
 
@@ -137,9 +148,16 @@ def run():
             try:
                 base = _get_api_url()
                 headers = {"Authorization": f"Bearer {VESPERA_API_TOKEN}"} if VESPERA_API_TOKEN else {}
+                r = None
                 r = requests.get(f"{base}{audio_url}", headers=headers, timeout=15)
-                r.raise_for_status()
-                audio_bytes = r.content
+                try:
+                    r.raise_for_status()
+                    audio_bytes = r.content
+                finally:
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
             except Exception as e:
                 log.warning("Failed to fetch TTS audio: %s", e)
 

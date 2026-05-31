@@ -35,9 +35,9 @@ VENICE_VOICE   = os.getenv("TTS_VOICE", "am_michael")
 EDGE_VOICE     = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural")
 KOKORO_VOICE   = os.getenv("KOKORO_VOICE", "af_heart")
 
-TTS_DIR    = Path("/tmp/vespera-tts")
+TTS_DIR    = Path.home() / ".vespera" / "tts"   # user-owned dir, not world-writable /tmp
 MODELS_DIR = Path.home() / ".vespera" / "models"
-TTS_DIR.mkdir(exist_ok=True)
+TTS_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 KOKORO_MODEL_URL  = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
@@ -51,6 +51,7 @@ KOKORO_VOICES_PATH = MODELS_DIR / "voices-v1.0.bin"
 # ─────────────────────────────────────────────
 
 def _tts_venice(text: str) -> str | None:
+    resp = None
     try:
         resp = requests.post(
             VENICE_TTS_URL,
@@ -66,6 +67,11 @@ def _tts_venice(text: str) -> str | None:
     except Exception as e:
         log.error("Venice error: %s", e)
         return None
+    finally:
+        try:
+            if resp: resp.close()
+        except Exception:
+            pass
 
 
 def _tts_edge(text: str) -> str | None:
@@ -120,10 +126,13 @@ def _download_kokoro_bg():
                 tmp = path.with_suffix('.tmp')
                 log.info("Downloading %s...", path.name)
                 resp = requests.get(url, stream=True, timeout=120)
-                resp.raise_for_status()
-                with open(tmp, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                try:
+                    resp.raise_for_status()
+                    with open(tmp, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                finally:
+                    resp.close()
                 tmp_files.append((tmp, path))
             # Only rename after BOTH downloads succeed — prevents partial-file false-ready
             for tmp, path in tmp_files:
@@ -184,16 +193,25 @@ def _tts_pyttsx3(text: str) -> str | None:
 # MAIN ENTRY
 # ─────────────────────────────────────────────
 
-def _cleanup_tts_dir(max_age_seconds: int = 3600):
-    """Delete TTS files older than max_age_seconds (default 1 hour)."""
+# TTS_RETENTION_HOURS env var controls how long audio files are kept.
+# Default: 168 hours (1 week). Set to 0 to disable auto-cleanup.
+_TTS_RETENTION_SECONDS = int(os.getenv("TTS_RETENTION_HOURS", "168")) * 3600
+
+
+def _cleanup_tts_dir(max_age_seconds: int = _TTS_RETENTION_SECONDS):
+    """Delete TTS files older than max_age_seconds (default 1 week)."""
     import time
     now = time.time()
-    for f in TTS_DIR.iterdir():
-        try:
-            if f.is_file() and (now - f.stat().st_mtime) > max_age_seconds:
-                f.unlink()
-        except Exception:
-            pass
+    try:
+        TTS_DIR.mkdir(exist_ok=True)  # recreate if wiped by OS or reboot
+        for f in TTS_DIR.iterdir():
+            try:
+                if f.is_file() and (now - f.stat().st_mtime) > max_age_seconds:
+                    f.unlink()
+            except Exception:
+                pass
+    except Exception as e:
+        log.warning("TTS cleanup skipped: %s", e)
 
 
 _cleanup_lock = threading.Lock()
@@ -217,6 +235,7 @@ def speak(text: str) -> str | None:
         return None
     if len(text) > 1500:
         text = text[:1500] + "..."
+    TTS_DIR.mkdir(exist_ok=True)  # ensure dir exists (may be wiped on reboot)
     _maybe_cleanup_tts()
 
     if VENICE_API_KEY:
