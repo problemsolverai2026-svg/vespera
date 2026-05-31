@@ -2,7 +2,7 @@
 **A private, self-hosted AI assistant. Runs on your machine. Nobody else controls it.**
 
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/problemsolverai2026gmailcom)
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.8-blue)
 
 No subscription. No monthly fee. Just your own computer — and an optional API key if you want smarter responses.
 
@@ -232,7 +232,7 @@ Free. [telegram.org](https://telegram.org) — bot setup takes 2 minutes via @Bo
 # In .env:
 CLOUD_PROVIDER=groq
 CLOUD_API_KEY=your_groq_key_here
-CLOUD_MODEL=llama-3.1-8b-instant
+CLOUD_MODEL=llama3-8b-8192
 ```
 
 Sign up at [console.groq.com](https://console.groq.com) — no credit card required.
@@ -254,7 +254,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Telegram** can be restricted to specific user IDs via `TELEGRAM_ALLOWED_USERS`.
 - **Web search results** are sanitized before being fed into model prompts to reduce prompt injection risk.
 - **Cloud APIs** only receive your message and minimal memory context — your full memory database never leaves your machine.
-- **Extensively audited** — 60+ bugs fixed across 15+ rounds of parallel Opus + Gemini + Grok security review before public release.
+- **Extensively audited** — 60+ bugs fixed across 20+ rounds of parallel Opus + Gemini + Grok security review before public release.
 
 ---
 

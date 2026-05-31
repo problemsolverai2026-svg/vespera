@@ -81,21 +81,25 @@ if grep -Eq "^TELEGRAM_BOT_TOKEN=.+" "$SCRIPT_DIR/.env" 2>/dev/null; then
     echo "Telegram bot started."
 fi
 
+# Read UI port from .env (default 3055)
+UI_PORT=$(grep -E '^UI_PORT=' "$SCRIPT_DIR/.env" 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'" || echo 3055)
+UI_PORT=${UI_PORT:-3055}
+
 # Start UI — check node_modules exist (means npm install has been run)
 if [ -d "$UI_DIR/node_modules" ]; then
     cd "$UI_DIR"
-    npm run dev -- --port 3055 &
+    npm run dev -- --port "$UI_PORT" &
     UI_PID=$!
     # Wait until UI dev server is up (up to 15s)
     echo -n "Waiting for UI..."
     for i in $(seq 1 30); do
-        if curl -sf "http://localhost:3055" &>/dev/null; then break; fi
+        if curl -sf "http://localhost:$UI_PORT" &>/dev/null; then break; fi
         sleep 0.5
     done
     echo " ready"
     echo ""
     echo "✅ Vespera is running!"
-    echo "   Web UI: http://localhost:3055"
+    echo "   Web UI: http://localhost:$UI_PORT"
     echo "   API:    http://localhost:$API_PORT"
     echo ""
     echo "   Press Ctrl+C to stop everything."

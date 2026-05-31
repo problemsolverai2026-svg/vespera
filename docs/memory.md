@@ -136,4 +136,6 @@ You can back up the database any time via the API:
 curl -X POST http://localhost:5055/api/backup
 ```
 
+> **Note:** If your API is running on a different port (check the terminal output from `./start.sh`), replace `5055` with the actual port.
+
 Backups are saved to `backups/vespera_YYYYMMDD_HHMMSS.db` inside the Vespera folder.

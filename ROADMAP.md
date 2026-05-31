@@ -1,5 +1,5 @@
 # Vespera Build Roadmap
-_Last updated: 2026-05-28_
+_Last updated: 2026-05-31_
 
 ## Goal
 Self-hosted, open-source AI assistant. Own your data, own your hardware, no subscription.

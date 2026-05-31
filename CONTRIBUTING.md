@@ -68,4 +68,4 @@ For bigger changes, open an issue first so we can discuss before you write a lot
 
 ## Security
 
-If you find a security issue, please open a private issue or email directly rather than posting publicly. Shell execution (`VESPERA_ALLOW_SHELL`) and file access are the highest-risk areas.
+If you find a security issue, please open a **private** GitHub issue rather than posting publicly. Shell execution (`VESPERA_ALLOW_SHELL`) and file access are the highest-risk areas.
