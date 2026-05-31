@@ -158,10 +158,12 @@ def main():
     log.info("  Started: %s", datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))
     log.info("=" * 50)
 
-    check_ollama()
-
+    # Register signal handlers BEFORE check_ollama() so Ctrl-C during a hang
+    # still triggers graceful shutdown and cleans up the lock file.
     signal.signal(signal.SIGINT,  handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+
+    check_ollama()
 
     threads = [
         threading.Thread(target=run_background_loop, daemon=True, name="BackgroundLoop"),

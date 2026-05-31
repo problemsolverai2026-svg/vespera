@@ -44,7 +44,7 @@ from collections import deque as _deque
 _rate_lock     = threading.Lock()
 _rate_calls: dict[str, _deque] = {}   # keyed by remote IP
 try:
-    RATE_LIMIT_MAX_CALLS = int(os.getenv("CHAT_RATE_LIMIT", "30"))
+    RATE_LIMIT_MAX_CALLS = max(1, int(os.getenv("CHAT_RATE_LIMIT", "30")))
 except (ValueError, TypeError):
     RATE_LIMIT_MAX_CALLS = 30
 RATE_LIMIT_WINDOW_SECONDS = 60
@@ -56,7 +56,8 @@ def _check_rate_limit(remote_addr: str) -> bool:
     with _rate_lock:
         # Evict oldest IP if dict is growing too large
         if len(_rate_calls) >= _RATE_DICT_MAX_IPS and remote_addr not in _rate_calls:
-            oldest_ip = next(iter(_rate_calls))
+            # Evict the IP with the oldest last-seen timestamp (LRU)
+            oldest_ip = min(_rate_calls, key=lambda ip: _rate_calls[ip][-1] if _rate_calls[ip] else 0)
             del _rate_calls[oldest_ip]
         calls = _rate_calls.setdefault(remote_addr, _deque())
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
@@ -84,7 +85,7 @@ if os.getenv("VESPERA_DEV", "false").lower() == "true":
     _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
 CORS(app, origins=_cors_origins)
 
-init_db()
+# init_db() is called once by main.py at startup — not here at import time
 
 
 def _safe_env_value(v: str, max_len: int = 2048) -> str:
@@ -97,8 +98,8 @@ def _safe_env_value(v: str, max_len: int = 2048) -> str:
         .replace("\n", "")
         .replace("\r", "")
         .replace("\x00", "")     # null bytes can truncate .env parsing
-        .replace("$",  "")        # prevent shell variable/command expansion
-        .replace("`",  "")        # prevent backtick command substitution
+        .replace("$",  "\\$")   # escape $ so it stays literal in double-quoted .env values
+        .replace("`",  "")        # strip backticks — no safe escape in double-quoted bash
         .replace("\\", "\\\\")
         .replace('"', '\\"')
         .strip()
@@ -301,31 +302,34 @@ def chat():
     add_conversation(role="user", content=message)
     try:
         result = handle_message(message)
-    except Exception as e:
+        if not isinstance(result, dict):
+            raise ValueError(f"handle_message returned unexpected type: {type(result)}")
+        response_text = result.get("response", "")
+        add_conversation(role="assistant", content=response_text)
+
+        # Generate TTS if requested — non-critical; never fail the response over it
+        tts_url = None
+        if data.get("tts", False):
+            try:
+                from tts import speak
+                tts_path = speak(response_text)
+                if tts_path:
+                    tts_url = f"/api/audio/{os.path.basename(tts_path)}"
+            except Exception:
+                app.logger.exception("TTS failed; returning response without audio")
+
+        return jsonify({
+            "ok": True,
+            "response": response_text,
+            "handled_by": result.get("handled_by", "unknown"),
+            "complexity": result.get("complexity", 0.0),
+            "audio": tts_url,
+        })
+    except Exception:
         import traceback
         app.logger.error("chat() exception: %s", traceback.format_exc())
         add_conversation(role="assistant", content="[Internal error]")
         return jsonify({"ok": False, "error": "Internal server error"}), 500
-    add_conversation(role="assistant", content=result.get("response", ""))
-
-    response_text = result.get("response", "")
-
-    # Generate TTS if requested
-    tts_path = None
-    tts_url  = None
-    if data.get("tts", False):
-        from tts import speak
-        tts_path = speak(response_text)
-        if tts_path:
-            tts_url = f"/api/audio/{os.path.basename(tts_path)}"
-
-    return jsonify({
-        "ok": True,
-        "response": response_text,
-        "handled_by": result.get("handled_by", "unknown"),
-        "complexity": result.get("complexity", 0.0),
-        "audio": tts_url,
-    })
 
 
 # ─────────────────────────────────────────────
@@ -436,6 +440,8 @@ def update_settings():
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)
+            # Also update in-process env so GET /api/settings reflects the new value immediately
+            os.environ[key] = str(value)
             updated.append(key)
 
         # Atomic write (0o600) — secrets must not be world-readable
@@ -555,9 +561,13 @@ def run_backup():
         return jsonify({"ok": False, "error": "Backup already running"}), 409
     try:
         from datetime import datetime
+        backups_dir = os.path.join(os.path.dirname(__file__), "backups")
+        os.makedirs(backups_dir, exist_ok=True)
         ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = os.path.join(os.path.dirname(__file__), "backups", f"vespera_{ts}.db")
+        dest = os.path.join(backups_dir, f"vespera_{ts}.db")
         path = backup_db(dest)
+        if not path:
+            raise RuntimeError("backup_db returned no path")
     except Exception as e:
         app.logger.error("Backup failed: %s", e)
         return jsonify({"ok": False, "error": "Backup failed"}), 500
@@ -576,9 +586,13 @@ def run_cleanup():
         return jsonify({"ok": False, "error": "Cleanup already running"}), 409
 
     def _run_and_release():
+        import concurrent.futures
         try:
             from cleanup_crew import run_cleanup as _run
-            _run()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                ex.submit(_run).result(timeout=300)
+        except concurrent.futures.TimeoutError:
+            app.logger.error("Manual cleanup timed out after 300s")
         except Exception:
             app.logger.exception("Manual cleanup failed")
         finally:
@@ -598,9 +612,13 @@ def run_pruning():
         return jsonify({"ok": False, "error": "Pruning already running"}), 409
 
     def _run_and_release():
+        import concurrent.futures
         try:
             from periodic_pruning import run_pruning as _run
-            _run()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                ex.submit(_run).result(timeout=300)
+        except concurrent.futures.TimeoutError:
+            app.logger.error("Manual pruning timed out after 300s")
         except Exception:
             app.logger.exception("Manual pruning failed")
         finally:
@@ -632,6 +650,7 @@ if __name__ == "__main__":
     _lockfd.write(str(os.getpid()))
     _lockfd.flush()
     # flock released automatically by OS on exit (including SIGKILL)
+    init_db()  # standalone entry point: initialise DB here
 
     def _handle_sigterm(*_):
         raise SystemExit(0)
