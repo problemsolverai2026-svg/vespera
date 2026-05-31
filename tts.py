@@ -193,12 +193,7 @@ def _tts_pyttsx3(text: str) -> str | None:
 # MAIN ENTRY
 # ─────────────────────────────────────────────
 
-# TTS_RETENTION_HOURS env var controls how long audio files are kept.
-# Default: 168 hours (1 week). Set to 0 to disable auto-cleanup.
-_TTS_RETENTION_SECONDS = int(os.getenv("TTS_RETENTION_HOURS", "168")) * 3600
-
-
-def _cleanup_tts_dir(max_age_seconds: int = _TTS_RETENTION_SECONDS):
+def _cleanup_tts_dir(max_age_seconds: int = 604800):
     """Delete TTS files older than max_age_seconds (default 1 week)."""
     import time
     now = time.time()

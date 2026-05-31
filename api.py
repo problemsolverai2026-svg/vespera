@@ -304,13 +304,6 @@ def chat():
 # Each entry: env_var, label, description, type, default
 _SETTINGS_SCHEMA = [
     {
-        "key":         "TTS_RETENTION_HOURS",
-        "label":       "TTS Audio Retention",
-        "description": "How many hours to keep generated voice audio files before auto-deleting them. 0 = never delete. Default: 168 (1 week).",
-        "type":        "number",
-        "default":     168,
-    },
-    {
         "key":         "CHAT_RATE_LIMIT",
         "label":       "Chat Rate Limit",
         "description": "Maximum number of /api/chat requests allowed per minute. Default: 30.",
