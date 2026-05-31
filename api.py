@@ -39,21 +39,26 @@ _pruning_lock = threading.Lock()
 # Allows at most RATE_LIMIT_MAX_CALLS calls within RATE_LIMIT_WINDOW_SECONDS.
 import time as _time
 _rate_lock     = threading.Lock()
-_rate_calls: list = []
+_rate_calls: dict[str, list] = {}   # keyed by remote IP
 RATE_LIMIT_MAX_CALLS      = int(os.getenv("CHAT_RATE_LIMIT", "30"))
 RATE_LIMIT_WINDOW_SECONDS = 60
+_RATE_DICT_MAX_IPS        = 10_000  # cap dict size to prevent unbounded growth
 
-def _check_rate_limit() -> bool:
-    """Return True if the request is allowed, False if rate-limited."""
+def _check_rate_limit(remote_addr: str) -> bool:
+    """Return True if the request is allowed, False if rate-limited (per IP)."""
     now = _time.time()
     with _rate_lock:
-        # Drop calls outside the window
+        # Evict oldest IP if dict is growing too large
+        if len(_rate_calls) >= _RATE_DICT_MAX_IPS and remote_addr not in _rate_calls:
+            oldest_ip = next(iter(_rate_calls))
+            del _rate_calls[oldest_ip]
+        calls = _rate_calls.setdefault(remote_addr, [])
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
-        while _rate_calls and _rate_calls[0] < cutoff:
-            _rate_calls.pop(0)
-        if len(_rate_calls) >= RATE_LIMIT_MAX_CALLS:
+        while calls and calls[0] < cutoff:
+            calls.pop(0)
+        if len(calls) >= RATE_LIMIT_MAX_CALLS:
             return False
-        _rate_calls.append(now)
+        calls.append(now)
         return True
 
 @app.errorhandler(413)
@@ -256,7 +261,7 @@ def chat():
     auth_err = require_auth()
     if auth_err:
         return auth_err
-    if not _check_rate_limit():
+    if not _check_rate_limit(request.remote_addr or "unknown"):
         return jsonify({"ok": False, "error": f"Rate limit exceeded ({RATE_LIMIT_MAX_CALLS} requests/minute)"}), 429
     data = request.json or {}
     message = data.get("message", "").strip()
@@ -370,12 +375,16 @@ def update_settings():
                 env_lines = f.readlines()
 
         def set_env(key, value):
-            line = f'{key}="{value}"\n'
+            safe = _safe_value(str(value))
+            line = f'{key}="{safe}"\n'
             for i, existing in enumerate(env_lines):
                 if existing.startswith(f"{key}="):
                     env_lines[i] = line
                     return
             env_lines.append(line)
+
+        # Interval keys must be >= 1 to avoid tight loops
+        _INTERVAL_KEYS = {"BACKGROUND_LOOP_INTERVAL", "CHAT_RATE_LIMIT", "VESPERA_MAX_TOKENS"}
 
         updated = []
         for key, value in data.items():
@@ -386,8 +395,9 @@ def update_settings():
                 schema = next(s for s in _SETTINGS_SCHEMA if s["key"] == key)
                 if schema["type"] in ("number", "float"):
                     value = float(value) if schema["type"] == "float" else int(value)
-                    if value < 0:
-                        return jsonify({"ok": False, "error": f"{key} must be >= 0"}), 400
+                    min_val = 1 if key in _INTERVAL_KEYS else 0
+                    if value < min_val:
+                        return jsonify({"ok": False, "error": f"{key} must be >= {min_val}"}), 400
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)

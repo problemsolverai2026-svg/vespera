@@ -14,7 +14,6 @@ import os
 import time
 import threading
 import signal
-import atexit
 from pathlib import Path
 from utils import get_logger, _sanitize
 
@@ -84,9 +83,6 @@ def print_status():
 def handle_shutdown(sig, frame):
     log.info("Shutting down gracefully...")
     _shutdown.set()
-
-signal.signal(signal.SIGINT,  handle_shutdown)
-signal.signal(signal.SIGTERM, handle_shutdown)
 
 
 # ─────────────────────────────────────────────
@@ -165,10 +161,12 @@ def main():
     for t in threads:
         t.start()
 
+    signal.signal(signal.SIGINT,  handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     log.info("All components running. Press Ctrl+C to stop.")
 
-    while not _shutdown.is_set():
-        _shutdown.wait(1)
+    _shutdown.wait()  # block until signal fires
 
     log.info("Goodbye.")
 

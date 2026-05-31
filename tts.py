@@ -221,8 +221,10 @@ def _maybe_cleanup_tts():
     with _cleanup_lock:
         if now - _last_cleanup < 60:
             return
-        _last_cleanup = now
     _cleanup_tts_dir()
+    # Update timestamp after cleanup succeeds so failures don't suppress retry
+    with _cleanup_lock:
+        _last_cleanup = time.time()
 
 
 def speak(text: str) -> str | None:
