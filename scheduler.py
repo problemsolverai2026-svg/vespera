@@ -57,7 +57,6 @@ def _sched_connect():
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
-        conn.commit()
     except Exception:
         conn.rollback()
         raise
@@ -76,7 +75,7 @@ def init_scheduler_db():
 # ─────────────────────────────────────────────
 
 def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule: str = None) -> str:
-    rid = uuid.uuid4().hex[:8]
+    rid = str(uuid.uuid4())
     # Always normalize to UTC so string comparisons in get_due_reminders() are correct
     if fire_at.tzinfo is not None:
         fire_at_utc = fire_at.astimezone(timezone.utc)
@@ -87,7 +86,6 @@ def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule:
             "INSERT INTO reminders (id, message, fire_at, recur, recur_rule, active, created_at) VALUES (?,?,?,?,?,1,?)",
             (rid, message, fire_at_utc.isoformat(), recur, recur_rule, datetime.now(timezone.utc).isoformat())
         )
-        conn.commit()
     log.info("Reminder set: '%s' at %s (id: %s)", message, fire_at_utc.strftime('%Y-%m-%d %H:%M %Z'), rid)
     return rid
 
@@ -103,7 +101,6 @@ def list_reminders() -> list[dict]:
 def cancel_reminder(rid: str) -> bool:
     with _sched_connect() as conn:
         cur = conn.execute("UPDATE reminders SET active=0 WHERE id=?", (rid,))
-        conn.commit()
     return cur.rowcount > 0
 
 
@@ -123,7 +120,6 @@ def get_due_reminders() -> list[dict]:
             )
             if cur.rowcount > 0:  # this process won the claim
                 claimed.append(dict(row))
-        conn.commit()
     return claimed
 
 
@@ -154,7 +150,6 @@ def reschedule_or_complete(reminder: dict):
             "UPDATE reminders SET fire_at=?, claimed_at=NULL WHERE id=?",
             (next_utc.isoformat(), reminder["id"])
         )
-        conn.commit()
     log.info("Rescheduled '%s' → %s", reminder['message'], next_utc.strftime('%Y-%m-%d %H:%M %Z'))
 
 
@@ -255,7 +250,6 @@ def fire_reminder(reminder: dict):
         try:
             with _sched_connect() as conn:
                 conn.execute("UPDATE reminders SET claimed_at=NULL WHERE id=?", (reminder["id"],))
-                conn.commit()
         except Exception as reset_err:
             log.error("Could not reset claimed_at for %s: %s", reminder["id"], reset_err)
 

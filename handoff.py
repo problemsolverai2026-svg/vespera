@@ -269,9 +269,11 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                         return block["text"]
                 log.warning("Claude unexpected stop_reason=%r — content: %s", stop_reason, data.get("content"))
                 return f"[Cloud error: unexpected stop_reason '{stop_reason}']"
-            return "[Error: tool call loop exhausted after 10 iterations]"
+            log.error("Claude tool call loop exhausted after 10 iterations")
+            return "[I ran into an issue with the cloud model. Please try again.]"
         except Exception as e:
-            return f"[Cloud error: {e}]"
+            log.error("Claude cloud error: %s", e)
+            return "[I ran into an issue reaching the cloud model. Please try again.]"
 
     # Venice (OpenAI-compatible)
     if CLOUD_PROVIDER == "venice":
@@ -288,9 +290,14 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 timeout=30,
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            if not content:
+                raise ValueError("Empty response from Venice")
+            return content
         except Exception as e:
-            return f"[Cloud error: {e}]"
+            log.error("Venice cloud error: %s", e)
+            return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
                 if resp: resp.close()
@@ -312,9 +319,14 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 timeout=30,
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            if not content:
+                raise ValueError("Empty response from Groq")
+            return content
         except Exception as e:
-            return f"[Cloud error: {e}]"
+            log.error("Groq cloud error: %s", e)
+            return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
                 if resp: resp.close()
@@ -337,9 +349,14 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 timeout=30,
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            data = resp.json()
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            if not content:
+                raise ValueError("Empty response from OpenAI")
+            return content
         except Exception as e:
-            return f"[Cloud error: {e}]"
+            log.error("OpenAI cloud error: %s", e)
+            return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
                 if resp: resp.close()
@@ -362,9 +379,15 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                 timeout=30,
             )
             resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            data = resp.json()
+            try:
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError, TypeError):
+                raise ValueError(f"Unexpected Gemini response format: {list(data.keys())}")
+            return content
         except Exception as e:
-            return f"[Cloud error: {e}]"
+            log.error("Gemini cloud error: %s", e)
+            return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
                 if resp: resp.close()

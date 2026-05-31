@@ -12,9 +12,8 @@ Users with no API keys get DuckDuckGo automatically.
 """
 
 import os
-import re
 import requests
-from utils import get_logger
+from utils import get_logger, _INJECTION_RE  # single source of truth for injection pattern
 
 log = get_logger("web_search")
 
@@ -22,7 +21,7 @@ log = get_logger("web_search")
 # CONFIG
 # ─────────────────────────────────────────────
 
-VENICE_API_KEY    = os.getenv("VENICE_API_KEY", "")
+VENICE_API_KEY    = os.getenv("VENICE_API_KEY", "")  # also used in config.py — reads same env var
 VENICE_SEARCH_URL = "https://api.venice.ai/api/v1/augment/search"
 
 BRAVE_API_KEY     = os.getenv("BRAVE_API_KEY", "")
@@ -94,21 +93,7 @@ def _search_venice(query: str) -> list[dict]:
 # MAIN ENTRY — auto-selects provider
 # ─────────────────────────────────────────────
 
-# Phrases that look like prompt injection attempts.
-# Use word-boundary regex to avoid false positives on substrings like "interact as" → "act as".
-_INJECTION_RE = re.compile(
-    r"\b(?:"
-    r"ignore\s+(?:all\s+)?previous"
-    r"|disregard\s+previous"
-    r"|new\s+instructions"
-    r"|system\s+prompt"
-    r"|you\s+are\s+now"
-    r"|act\s+as\b"
-    r"|forget\s+everything"
-    r"|jailbreak"
-    r")",
-    re.IGNORECASE,
-)
+# _INJECTION_RE imported from utils — single source of truth
 
 
 def _sanitize_result(text: str) -> str:

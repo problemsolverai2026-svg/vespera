@@ -30,12 +30,17 @@ def _acquire_pid_lock() -> None:
     import fcntl
     lock_file = Path(__file__).parent / ".telegram.lock"
     global _lockfd
-    _lockfd = open(lock_file, 'w')
+    # Open without truncating — truncate AFTER acquiring lock so we never
+    # wipe a running process's PID before confirming the lock is free.
+    _lockfd = open(lock_file, 'a+')
     try:
         fcntl.flock(_lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError:
+        _lockfd.close()
         print("[VesperaTelegram] Already running. Exiting.")
         raise SystemExit(0)
+    _lockfd.seek(0)
+    _lockfd.truncate()
     _lockfd.write(str(os.getpid()))
     _lockfd.flush()
     def _handle_sigterm(*_): raise SystemExit(0)

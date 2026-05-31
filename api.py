@@ -98,9 +98,9 @@ def _safe_env_value(v: str, max_len: int = 2048) -> str:
         .replace("\n", "")
         .replace("\r", "")
         .replace("\x00", "")     # null bytes can truncate .env parsing
+        .replace("\\", "\\\\")
         .replace("$",  "\\$")   # escape $ so it stays literal in double-quoted .env values
         .replace("`",  "")        # strip backticks — no safe escape in double-quoted bash
-        .replace("\\", "\\\\")
         .replace('"', '\\"')
         .strip()
     )
