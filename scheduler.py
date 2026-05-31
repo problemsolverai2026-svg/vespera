@@ -102,7 +102,8 @@ def list_reminders() -> list[dict]:
 def cancel_reminder(rid: str) -> bool:
     with _sched_connect() as conn:
         cur = conn.execute("UPDATE reminders SET active=0 WHERE id=?", (rid,))
-    return cur.rowcount > 0
+        affected = cur.rowcount
+    return affected > 0
 
 
 def get_due_reminders() -> list[dict]:

@@ -246,18 +246,30 @@ def get_recent_conversations(limit: int = 20) -> list[dict]:
 
 
 def backup_db(dest_path: str) -> str:
-    """Copy the live database to dest_path using SQLite's online backup API."""
+    """Copy the live database to dest_path using SQLite's online backup API.
+    Writes to a .tmp file first then atomically renames — a failed backup
+    never leaves a corrupt destination file.
+    """
+    import os
     dest = Path(dest_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".tmp")
     src_conn = sqlite3.connect(DB_PATH)
     try:
-        dest_conn = sqlite3.connect(dest)
+        dest_conn = sqlite3.connect(str(tmp))
         try:
             src_conn.backup(dest_conn)
         finally:
             dest_conn.close()
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
     finally:
         src_conn.close()
+    os.replace(str(tmp), str(dest))
     log.info("Database backed up to %s", dest)
     return str(dest)
 

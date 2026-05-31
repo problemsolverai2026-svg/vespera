@@ -132,8 +132,12 @@ def run_shell(command: str, workdir: str = None) -> str:
             timeout=30,
             cwd=cwd,
         )
-        output = result.stdout + result.stderr
-        return output.strip() if output.strip() else "(no output)"
+        output = (result.stdout + result.stderr).strip()
+        if not output:
+            return "(no output)"
+        if len(output) > 32_000:
+            output = output[:32_000] + "\n[output truncated — exceeded 32,000 chars]"
+        return output
     except FileNotFoundError:
         return f"Error: command not found: {args[0]}"
     except subprocess.TimeoutExpired:

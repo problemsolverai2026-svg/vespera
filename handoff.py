@@ -203,7 +203,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                     data = resp.json()
                 finally:
                     try:
-                        if resp: resp.close()
+                        if resp is not None: resp.close()
                     except Exception:
                         pass
                 stop_reason = data.get("stop_reason")
@@ -243,6 +243,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                                 return block["text"]
                         return "[Error: unexpected stop — tool_use signaled but no tool blocks found]"
                     messages.append({"role": "user", "content": tool_results})
+                    import time as _t; _t.sleep(0.5)  # brief backoff to avoid rate limits
                     continue
 
                 # Unknown stop reason — return whatever text is present, else descriptive error
@@ -282,7 +283,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
-                if resp: resp.close()
+                if resp is not None: resp.close()
             except Exception:
                 pass
 
@@ -311,7 +312,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
-                if resp: resp.close()
+                if resp is not None: resp.close()
             except Exception:
                 pass
 
@@ -341,7 +342,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
-                if resp: resp.close()
+                if resp is not None: resp.close()
             except Exception:
                 pass
 
@@ -372,7 +373,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
             return "[I ran into an issue reaching the cloud model. Please try again.]"
         finally:
             try:
-                if resp: resp.close()
+                if resp is not None: resp.close()
             except Exception:
                 pass
 
@@ -384,6 +385,8 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
 # ─────────────────────────────────────────────
 
 def handle_message(message: str) -> dict:
+    # Sanitize user input before it touches any prompt or storage
+    message = _sanitize(message, 8000) or message
     memories, recent = get_context()
     complexity, reason, needs_search = score_complexity(message)
     log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)

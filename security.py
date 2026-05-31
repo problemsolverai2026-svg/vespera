@@ -44,6 +44,12 @@ for _p in ALLOW_PATHS:
 # API auth token — if set, all API requests must include header:
 # Authorization: Bearer <token>
 API_TOKEN = os.getenv("VESPERA_API_TOKEN", "")
+if not API_TOKEN:
+    print(
+        "\n[Vespera] ⚠️  WARNING: VESPERA_API_TOKEN is not set. "
+        "The API is open to anyone who can reach it. "
+        "Set VESPERA_API_TOKEN in your .env to require authentication.\n"
+    )
 
 # Max tokens per cloud response — cost control
 def _safe_int(env_key: str, default: int) -> int:

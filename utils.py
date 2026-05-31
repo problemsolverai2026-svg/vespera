@@ -52,6 +52,7 @@ def get_logger(name: str) -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S"
         ))
         logger.addHandler(handler)
+        logger.propagate = False  # prevent double-printing via Flask root logger
     logger.setLevel(getattr(logging, level, logging.INFO))
     return logger
 
@@ -163,7 +164,7 @@ def call_ollama(
         return None
     finally:
         try:
-            if resp:
+            if resp is not None:
                 resp.close()
         except Exception:
             pass
