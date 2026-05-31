@@ -127,12 +127,18 @@ def main():
     global _lockfd
     import fcntl
     lock_file = Path(__file__).parent / ".main.lock"
-    _lockfd = open(lock_file, 'w')
+    # Open without truncating — truncate AFTER acquiring lock so we never
+    # wipe a running process's PID before confirming it is free.
+    _lockfd = open(lock_file, 'a+')
     try:
         fcntl.flock(_lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError:
+        _lockfd.close()
         log.error("Already running. Exiting.")
         raise SystemExit(0)
+    # Lock acquired — now safe to write our PID
+    _lockfd.seek(0)
+    _lockfd.truncate()
     _lockfd.write(str(os.getpid()))
     _lockfd.flush()
     # ───────────────────────────────────────────────────────────────────
@@ -140,7 +146,11 @@ def main():
     init_db()
 
     if "--test" in sys.argv:
-        run_test()
+        try:
+            run_test()
+        finally:
+            _lockfd.close()
+            lock_file.unlink(missing_ok=True)
         return
 
     log.info("=" * 50)
@@ -169,7 +179,11 @@ def main():
     try:
         _shutdown.wait()  # block until signal fires
     finally:
-        # Release lock and remove lock file on clean exit
+        # Give daemon threads a brief grace period to finish in-flight work
+        _shutdown.set()
+        for t in threads:
+            t.join(timeout=5)
+        # Release lock and clean up
         try:
             _lockfd.close()
             lock_file.unlink(missing_ok=True)

@@ -34,6 +34,7 @@ app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB request body limit
 _env_lock     = threading.Lock()
 _cleanup_lock = threading.Lock()
 _pruning_lock = threading.Lock()
+_backup_lock  = threading.Lock()
 
 # ── Rate limiter for /api/chat ─────────────────────────────────────────────
 # Allows at most RATE_LIMIT_MAX_CALLS calls within RATE_LIMIT_WINDOW_SECONDS.
@@ -70,7 +71,10 @@ def _check_rate_limit(remote_addr: str) -> bool:
 def request_too_large(e):
     return jsonify({"ok": False, "error": "Request body too large (max 1 MB)"}), 413
 # Build CORS origins dynamically from configured ports
-_ui_port = os.getenv("UI_PORT", "3055")
+try:
+    _ui_port = str(int(os.getenv("UI_PORT", "3055")))  # validate numeric
+except (ValueError, TypeError):
+    _ui_port = "3055"
 _cors_origins = [
     f"http://localhost:{_ui_port}",
     f"http://127.0.0.1:{_ui_port}",
@@ -92,6 +96,7 @@ def _safe_env_value(v: str, max_len: int = 2048) -> str:
         s
         .replace("\n", "")
         .replace("\r", "")
+        .replace("\x00", "")     # null bytes can truncate .env parsing
         .replace("$",  "")        # prevent shell variable/command expansion
         .replace("`",  "")        # prevent backtick command substitution
         .replace("\\", "\\\\")
@@ -107,7 +112,8 @@ def _get_client_ip() -> str:
     if _TRUST_PROXY:
         forwarded = request.headers.get("X-Forwarded-For", "")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            # Use rightmost IP — appended by our proxy, not spoofable by client
+            return forwarded.split(",")[-1].strip()
     return request.remote_addr or "unknown"
 
 
@@ -281,7 +287,9 @@ def chat():
     if auth_err:
         return auth_err
     if not _check_rate_limit(_get_client_ip()):
-        return jsonify({"ok": False, "error": f"Rate limit exceeded ({RATE_LIMIT_MAX_CALLS} requests/minute)"}), 429
+        resp = jsonify({"ok": False, "error": "Too many requests"})
+        resp.headers["Retry-After"] = str(RATE_LIMIT_WINDOW_SECONDS)
+        return resp, 429
     data = request.json or {}
     message = data.get("message", "").strip()
     if not message:
@@ -409,8 +417,6 @@ def update_settings():
             "VESPERA_MAX_TOKENS":       (1,   32768),   # 1 – 32k tokens
             "COMPLEXITY_THRESHOLD":     (0.0, 1.0),     # 0.0 – 1.0
         }
-        _INTERVAL_KEYS = {"BACKGROUND_LOOP_INTERVAL", "CHAT_RATE_LIMIT", "VESPERA_MAX_TOKENS"}
-
         updated = []
         for key, value in data.items():
             if key not in valid_keys:
@@ -466,6 +472,9 @@ def get_models():
             import shutil
             ollama_bin = shutil.which("ollama") or ollama_bin
         result = subprocess.run([ollama_bin, "list"], capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            app.logger.error("ollama list failed (rc=%d): %s", result.returncode, result.stderr.strip())
+            return jsonify({"ok": False, "error": "Model list unavailable"}), 503
         lines = result.stdout.strip().split("\n")[1:]  # skip header
         models = []
         for line in lines:
@@ -542,14 +551,18 @@ def delete_reminder(rid):
 def run_backup():
     auth_err = require_auth()
     if auth_err: return auth_err
-    from datetime import datetime
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest = os.path.join(os.path.dirname(__file__), "backups", f"vespera_{ts}.db")
+    if not _backup_lock.acquire(blocking=False):
+        return jsonify({"ok": False, "error": "Backup already running"}), 409
     try:
+        from datetime import datetime
+        ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = os.path.join(os.path.dirname(__file__), "backups", f"vespera_{ts}.db")
         path = backup_db(dest)
     except Exception as e:
         app.logger.error("Backup failed: %s", e)
         return jsonify({"ok": False, "error": "Backup failed"}), 500
+    finally:
+        _backup_lock.release()
     return jsonify({"ok": True, "backup": os.path.basename(path)})
 
 
