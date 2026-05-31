@@ -38,9 +38,14 @@ _pruning_lock = threading.Lock()
 # ── Rate limiter for /api/chat ─────────────────────────────────────────────
 # Allows at most RATE_LIMIT_MAX_CALLS calls within RATE_LIMIT_WINDOW_SECONDS.
 import time as _time
+import math as _math
+from collections import deque as _deque
 _rate_lock     = threading.Lock()
-_rate_calls: dict[str, list] = {}   # keyed by remote IP
-RATE_LIMIT_MAX_CALLS      = int(os.getenv("CHAT_RATE_LIMIT", "30"))
+_rate_calls: dict[str, _deque] = {}   # keyed by remote IP
+try:
+    RATE_LIMIT_MAX_CALLS = int(os.getenv("CHAT_RATE_LIMIT", "30"))
+except (ValueError, TypeError):
+    RATE_LIMIT_MAX_CALLS = 30
 RATE_LIMIT_WINDOW_SECONDS = 60
 _RATE_DICT_MAX_IPS        = 10_000  # cap dict size to prevent unbounded growth
 
@@ -52,10 +57,10 @@ def _check_rate_limit(remote_addr: str) -> bool:
         if len(_rate_calls) >= _RATE_DICT_MAX_IPS and remote_addr not in _rate_calls:
             oldest_ip = next(iter(_rate_calls))
             del _rate_calls[oldest_ip]
-        calls = _rate_calls.setdefault(remote_addr, [])
+        calls = _rate_calls.setdefault(remote_addr, _deque())
         cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         while calls and calls[0] < cutoff:
-            calls.pop(0)
+            calls.popleft()
         if len(calls) >= RATE_LIMIT_MAX_CALLS:
             return False
         calls.append(now)
@@ -200,18 +205,20 @@ def update_component(name):
             set_env("CLOUD_PROVIDER", _safe_value(data["provider"]))
             updated.append("provider")
 
-        # Atomic write — write to temp file then rename so a crash can't corrupt .env
+        # Atomic write (0o600) — secrets must not be world-readable
         tmp_path = env_path + ".tmp"
         try:
-            with open(tmp_path, "w") as f:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.writelines(env_lines)
             os.replace(tmp_path, env_path)
         except Exception as e:
+            app.logger.error("Failed to write .env: %s", e)
             try:
                 os.unlink(tmp_path)
             except FileNotFoundError:
                 pass
-            return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
+            return jsonify({"ok": False, "error": "Failed to write config"}), 500
 
     return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
 
@@ -395,25 +402,32 @@ def update_settings():
                 schema = next(s for s in _SETTINGS_SCHEMA if s["key"] == key)
                 if schema["type"] in ("number", "float"):
                     value = float(value) if schema["type"] == "float" else int(value)
+                    if not _math.isfinite(value):
+                        return jsonify({"ok": False, "error": f"{key} must be a finite number"}), 400
                     min_val = 1 if key in _INTERVAL_KEYS else 0
                     if value < min_val:
                         return jsonify({"ok": False, "error": f"{key} must be >= {min_val}"}), 400
+                    if key == "COMPLEXITY_THRESHOLD" and value > 1.0:
+                        return jsonify({"ok": False, "error": "COMPLEXITY_THRESHOLD must be 0.0–1.0"}), 400
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)
             updated.append(key)
 
+        # Atomic write (0o600) — secrets must not be world-readable
         tmp_path = env_path + ".tmp"
         try:
-            with open(tmp_path, "w") as f:
+            fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.writelines(env_lines)
             os.replace(tmp_path, env_path)
         except Exception as e:
+            app.logger.error("Failed to write .env: %s", e)
             try:
                 os.unlink(tmp_path)
             except FileNotFoundError:
                 pass
-            return jsonify({"ok": False, "error": f"Failed to write config: {e}"}), 500
+            return jsonify({"ok": False, "error": "Failed to write config"}), 500
 
     return jsonify({"ok": True, "updated": updated, "note": "Restart Vespera to apply changes."})
 
@@ -529,6 +543,8 @@ def run_cleanup():
         try:
             from cleanup_crew import run_cleanup as _run
             _run()
+        except Exception:
+            app.logger.exception("Manual cleanup failed")
         finally:
             _cleanup_lock.release()
 
@@ -549,6 +565,8 @@ def run_pruning():
         try:
             from periodic_pruning import run_pruning as _run
             _run()
+        except Exception:
+            app.logger.exception("Manual pruning failed")
         finally:
             _pruning_lock.release()
 

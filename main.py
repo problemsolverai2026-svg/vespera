@@ -150,6 +150,9 @@ def main():
 
     check_ollama()
 
+    signal.signal(signal.SIGINT,  handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
     threads = [
         threading.Thread(target=run_background_loop, daemon=True, name="BackgroundLoop"),
         threading.Thread(target=run_cleanup_crew,    daemon=True, name="CleanupCrew"),
@@ -160,9 +163,6 @@ def main():
 
     for t in threads:
         t.start()
-
-    signal.signal(signal.SIGINT,  handle_shutdown)
-    signal.signal(signal.SIGTERM, handle_shutdown)
 
     log.info("All components running. Press Ctrl+C to stop.")
 
