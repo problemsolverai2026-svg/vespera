@@ -37,11 +37,18 @@ export interface MemoryItem {
   [k: string]: unknown;
 }
 
-export interface StatusResponse {
+export interface MemoryStats {
   working?: number;
   recent?: number;
   validated?: number;
   core?: number;
+  total_active?: number;
+  [k: string]: unknown;
+}
+
+export interface StatusResponse {
+  ok?: boolean;
+  memory?: MemoryStats;
   [k: string]: unknown;
 }
 

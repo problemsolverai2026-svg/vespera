@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { vespera, type MemoryItem, type StatusResponse } from "@/lib/vespera";
+import { vespera, type MemoryItem, type StatusResponse, type MemoryStats } from "@/lib/vespera";
 
 export const Route = createFileRoute("/memory")({
   head: () => ({ meta: [{ title: "Memory · Vespera" }] }),
@@ -14,12 +14,12 @@ type Layer = (typeof LAYERS)[number];
 function MemoryPage() {
   const [layer, setLayer] = useState<Layer>("working");
   const [items, setItems] = useState<MemoryItem[]>([]);
-  const [status, setStatus] = useState<StatusResponse>({});
+  const [memStats, setMemStats] = useState<MemoryStats>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    vespera.status().then(setStatus).catch(() => {});
+    vespera.status().then((s) => setMemStats(s.memory ?? {})).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function MemoryPage() {
 
         <div className="flex gap-1 rounded-lg border border-border bg-card/40 p-1">
           {LAYERS.map((l) => {
-            const count = (status[l] as number | undefined) ?? null;
+            const count = (memStats[l] as number | undefined) ?? null;
             return (
               <button
                 key={l}
