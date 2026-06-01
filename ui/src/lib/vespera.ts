@@ -67,7 +67,7 @@ export interface OllamaModel {
 }
 
 export interface SecuritySettings {
-  telegram_allowed_user_ids?: string;
+  telegram_allowed_users?: string[];
   shell_execution?: boolean;
   allowed_file_paths?: string;
   api_auth_token?: string;
@@ -94,9 +94,9 @@ export const vespera = {
   models: () => req<OllamaModel[]>("/api/models"),
   conversations: (limit = 50) => req<ConversationItem[]>(`/api/conversations?limit=${limit}`),
   security: () => req<SecuritySettings>("/api/security"),
-  updateSecurity: (body: Partial<SecuritySettings>) =>
-    req<SecuritySettings>("/api/security", {
+  saveTelegramUsers: (ids: string[]) =>
+    req<{ ok: boolean }>("/api/settings", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ TELEGRAM_ALLOWED_USERS: ids.join(",") }),
     }),
 };

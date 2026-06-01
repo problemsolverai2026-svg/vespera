@@ -367,6 +367,13 @@ _SETTINGS_SCHEMA = [
         "type":        "number",
         "default":     180,
     },
+    {
+        "key":         "TELEGRAM_ALLOWED_USERS",
+        "label":       "Telegram Allowed User IDs",
+        "description": "Comma-separated Telegram user IDs allowed to use the bot. Empty = unrestricted.",
+        "type":        "string",
+        "default":     "",
+    },
 ]
 
 

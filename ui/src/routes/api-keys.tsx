@@ -175,6 +175,93 @@ function SecurityField<K extends keyof SecuritySettings>({
   );
 }
 
+function TelegramUsersField({ initial }: { initial: string[] }) {
+  const [ids, setIds] = useState<string[]>(initial);
+  const [newId, setNewId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const save = async (updated: string[]) => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await vespera.saveTelegramUsers(updated);
+      setMsg("Saved");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(null), 2500);
+    }
+  };
+
+  const add = () => {
+    const id = newId.trim();
+    if (!id || ids.includes(id)) return;
+    const updated = [...ids, id];
+    setIds(updated);
+    setNewId("");
+    save(updated);
+  };
+
+  const remove = (id: string) => {
+    const updated = ids.filter((u) => u !== id);
+    setIds(updated);
+    save(updated);
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 sm:col-span-2">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-sm">Telegram Allowed User IDs</h3>
+        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+        {saving && <span className="text-xs text-muted-foreground">Saving…</span>}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Only these Telegram user IDs can talk to your bot. Empty = unrestricted.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {ids.length === 0 && (
+          <span className="text-xs text-muted-foreground italic">No users — bot is unrestricted</span>
+        )}
+        {ids.map((id) => (
+          <span
+            key={id}
+            className="flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 font-mono text-xs"
+          >
+            {id}
+            <button
+              type="button"
+              onClick={() => remove(id)}
+              className="ml-1 text-muted-foreground hover:text-destructive"
+              aria-label={`Remove ${id}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <input
+          type="text"
+          value={newId}
+          onChange={(e) => setNewId(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          placeholder="Telegram user ID…"
+          className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm font-mono outline-none focus:border-ring"
+        />
+        <button
+          onClick={add}
+          disabled={!newId.trim()}
+          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApiKeysPage() {
   const [sec, setSec] = useState<SecuritySettings | null>(null);
   const [componentStatus, setComponentStatus] = useState<Record<string, boolean>>({});
@@ -223,11 +310,7 @@ function ApiKeysPage() {
             <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
           ) : (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <SecurityField
-                label="Telegram Allowed User IDs"
-                k="telegram_allowed_user_ids"
-                initial={sec}
-              />
+              <TelegramUsersField initial={sec.telegram_allowed_users ?? []} />
               <SecurityField label="Shell Execution" k="shell_execution" initial={sec} type="toggle" />
               <SecurityField label="Allowed File Paths" k="allowed_file_paths" initial={sec} />
               <SecurityField label="API Auth Token" k="api_auth_token" initial={sec} type="password" />
