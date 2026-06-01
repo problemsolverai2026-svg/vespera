@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { vespera, type SecuritySettings } from "@/lib/vespera";
 
@@ -180,18 +180,26 @@ function TelegramUsersField({ initial }: { initial: string[] }) {
   const [newId, setNewId] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const save = async (updated: string[]) => {
+    // Cancel any in-flight save before starting a new one
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setSaving(true);
     setMsg(null);
     try {
       await vespera.saveTelegramUsers(updated);
-      setMsg("Saved");
+      if (!ctrl.signal.aborted) setMsg("Saved");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Failed");
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (!ctrl.signal.aborted) setMsg(e instanceof Error ? e.message : "Failed");
     } finally {
-      setSaving(false);
-      setTimeout(() => setMsg(null), 2500);
+      if (!ctrl.signal.aborted) {
+        setSaving(false);
+        setTimeout(() => setMsg(null), 2500);
+      }
     }
   };
 

@@ -110,5 +110,4 @@ def get_status() -> dict:
         "max_tokens": MAX_TOKENS,
         "telegram_restricted": bool(ALLOWED_TELEGRAM_USERS),
         "telegram_allowed_count": len(ALLOWED_TELEGRAM_USERS),
-        "telegram_allowed_users": list(ALLOWED_TELEGRAM_USERS),
     }

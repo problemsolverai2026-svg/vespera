@@ -58,13 +58,16 @@ def init_db():
     schema = SCHEMA_PATH.read_text()
     with _connect() as conn:
         conn.executescript(schema)
-        # Migrations: add columns that may not exist in older DBs
+    # Run migrations in a separate connection — executescript() issues an implicit
+    # COMMIT so schema + ALTER can't share a single atomic transaction anyway.
+    with _connect() as conn:
         for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
             try:
                 conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
                 log.info("Migrated conversations: added column %s", col)
-            except Exception:
-                pass  # column already exists
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise  # real error — don't swallow it
     log.info("Memory store initialized at %s", DB_PATH)
 
 

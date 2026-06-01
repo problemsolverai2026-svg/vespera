@@ -306,7 +306,10 @@ def chat():
             raise ValueError(f"handle_message returned unexpected type: {type(result)}")
         response_text = result.get("response", "")
         handled_by = result.get("handled_by", "local")
-        complexity_score = float(result.get("complexity", 0.0))
+        try:
+            complexity_score = float(result.get("complexity", 0.0))
+        except (TypeError, ValueError):
+            complexity_score = 0.0
         add_conversation(
             role="assistant",
             content=response_text,
@@ -335,7 +338,10 @@ def chat():
     except Exception:
         import traceback
         app.logger.error("chat() exception: %s", traceback.format_exc())
-        add_conversation(role="assistant", content="[Internal error]")
+        try:
+            add_conversation(role="assistant", content="[Internal error]")
+        except Exception:
+            app.logger.exception("Failed to log error conversation to DB")
         return jsonify({"ok": False, "error": "Internal server error"}), 500
 
 
