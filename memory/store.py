@@ -58,6 +58,13 @@ def init_db():
     schema = SCHEMA_PATH.read_text()
     with _connect() as conn:
         conn.executescript(schema)
+        # Migrations: add columns that may not exist in older DBs
+        for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
+            try:
+                conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
+                log.info("Migrated conversations: added column %s", col)
+            except Exception:
+                pass  # column already exists
     log.info("Memory store initialized at %s", DB_PATH)
 
 
@@ -91,16 +98,17 @@ def add_memory(
     return memory_id
 
 
-def add_conversation(role: str, content: str, summary: str = None) -> str:
+def add_conversation(role: str, content: str, summary: str = None,
+                     used_cloud: bool = False, complexity: float = 0.0) -> str:
     """Log a conversation message. Returns its ID."""
     conv_id = str(uuid.uuid4())
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO conversations (id, timestamp, role, content, summary)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO conversations (id, timestamp, role, content, summary, used_cloud, complexity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (conv_id, _now(), role, content, summary),
+            (conv_id, _now(), role, content, summary, 1 if used_cloud else 0, complexity),
         )
     return conv_id
 
@@ -239,10 +247,16 @@ def get_recent_conversations(limit: int = 20) -> list[dict]:
     """Get the most recent conversation messages."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM conversations ORDER BY timestamp DESC LIMIT ?",
+            "SELECT id, timestamp, role, content, summary, used_cloud, complexity FROM conversations ORDER BY timestamp DESC LIMIT ?",
             (limit,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    results = []
+    for r in rows:
+        d = dict(r)
+        d["used_cloud"] = bool(d.get("used_cloud", 0))
+        d["complexity"] = d.get("complexity") or 0.0
+        results.append(d)
+    return results
 
 
 def backup_db(dest_path: str) -> str:

@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS conversations (
     timestamp   TEXT NOT NULL,
     role        TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
     content     TEXT NOT NULL,
-    summary     TEXT                         -- short summary generated after conversation
+    summary     TEXT,                        -- short summary generated after conversation
+    used_cloud  INTEGER DEFAULT 0,           -- 1 if cloud AI was used (costs money)
+    complexity  REAL DEFAULT 0.0             -- handoff complexity score (0.0–1.0)
 );
 
 -- Pruning log (audit trail of what was removed and why)

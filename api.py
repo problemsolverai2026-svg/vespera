@@ -305,7 +305,14 @@ def chat():
         if not isinstance(result, dict):
             raise ValueError(f"handle_message returned unexpected type: {type(result)}")
         response_text = result.get("response", "")
-        add_conversation(role="assistant", content=response_text)
+        handled_by = result.get("handled_by", "local")
+        complexity_score = float(result.get("complexity", 0.0))
+        add_conversation(
+            role="assistant",
+            content=response_text,
+            used_cloud=(handled_by == "cloud"),
+            complexity=complexity_score,
+        )
 
         # Generate TTS if requested — non-critical; never fail the response over it
         tts_url = None

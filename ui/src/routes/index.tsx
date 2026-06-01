@@ -16,7 +16,7 @@ export const Route = createFileRoute("/")({
 interface Msg {
   role: "user" | "assistant";
   content: string;
-  source?: string;
+  used_cloud?: boolean;
   complexity?: number;
 }
 
@@ -28,11 +28,13 @@ function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    vespera.conversations(50).then((history) => {
+    vespera.conversations(50).then((history: any[]) => {
       setMessages(
         [...history].reverse().map((m) => ({
           role: m.role,
           content: m.content,
+          used_cloud: !!m.used_cloud,
+          complexity: m.complexity ?? 0,
         }))
       );
     }).catch(() => { /* backend not running or no history yet */ });
@@ -56,7 +58,7 @@ function ChatPage() {
         {
           role: "assistant",
           content: res.response ?? "(empty response)",
-          source: res.source,
+          used_cloud: (res as any).handled_by === "cloud",
           complexity: res.complexity,
         },
       ]);
@@ -81,6 +83,19 @@ function ChatPage() {
   return (
     <AppShell>
       <div className="flex h-[calc(100vh-10rem)] flex-col gap-3">
+        {/* Legend */}
+        <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
+          <span className="font-medium">Key:</span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--local)]" />
+            <span>Local — free</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--cloud)]" />
+            <span>Cloud — costs money</span>
+          </span>
+        </div>
+
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto rounded-lg border border-border bg-card/40 p-4"
@@ -104,26 +119,24 @@ function ChatPage() {
                   }
                 >
                   <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
-                  {m.role === "assistant" && (m.source || m.complexity !== undefined) && (
+                  {m.role === "assistant" && (
                     <div className="flex items-center gap-2 text-xs">
-                      {m.source && (
-                        <span
-                          className="rounded-full border border-border px-2 py-0.5 font-mono"
-                          style={{
-                            color:
-                              m.source === "local"
-                                ? "var(--local)"
-                                : m.source === "cloud"
-                                  ? "var(--cloud)"
-                                  : undefined,
-                          }}
-                        >
-                          {m.source}
+                      {m.used_cloud ? (
+                        <span className="flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+                          style={{ background: "color-mix(in oklch, var(--cloud) 18%, transparent)", color: "var(--cloud)", border: "1px solid color-mix(in oklch, var(--cloud) 35%, transparent)" }}>
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--cloud)]" />
+                          cloud
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+                          style={{ background: "color-mix(in oklch, var(--local) 18%, transparent)", color: "var(--local)", border: "1px solid color-mix(in oklch, var(--local) 35%, transparent)" }}>
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--local)]" />
+                          local
                         </span>
                       )}
-                      {m.complexity !== undefined && (
+                      {m.complexity !== undefined && m.complexity > 0 && (
                         <span className="font-mono text-muted-foreground">
-                          complexity {Number(m.complexity).toFixed(2)}
+                          {Number(m.complexity).toFixed(2)}
                         </span>
                       )}
                     </div>
