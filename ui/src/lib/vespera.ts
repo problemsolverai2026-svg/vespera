@@ -13,6 +13,12 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface ConversationItem {
+  role: "user" | "assistant";
+  content: string;
+  [k: string]: unknown;
+}
+
 export interface ChatResponse {
   response: string;
   model?: string;
@@ -79,6 +85,7 @@ export const vespera = {
   cleanup: () => req<{ ok: boolean }>("/api/cleanup", { method: "POST" }),
   prune: () => req<{ ok: boolean }>("/api/prune", { method: "POST" }),
   models: () => req<OllamaModel[]>("/api/models"),
+  conversations: (limit = 50) => req<ConversationItem[]>(`/api/conversations?limit=${limit}`),
   security: () => req<SecuritySettings>("/api/security"),
   updateSecurity: (body: Partial<SecuritySettings>) =>
     req<SecuritySettings>("/api/security", {

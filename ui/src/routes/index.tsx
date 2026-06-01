@@ -28,6 +28,17 @@ function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    vespera.conversations(50).then((history) => {
+      setMessages(
+        [...history].reverse().map((m) => ({
+          role: m.role,
+          content: m.content,
+        }))
+      );
+    }).catch(() => { /* backend not running or no history yet */ });
+  }, []);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
