@@ -134,7 +134,7 @@ function ChatPage() {
                           local
                         </span>
                       )}
-                      {m.complexity !== undefined && m.complexity > 0 && (
+                      {m.complexity !== undefined && (
                         <span className="font-mono text-muted-foreground">
                           {Number(m.complexity).toFixed(2)}
                         </span>
