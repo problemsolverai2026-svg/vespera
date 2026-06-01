@@ -2,7 +2,7 @@
 **A private, self-hosted AI assistant. Runs on your machine. Nobody else controls it.**
 
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/problemsolverai2026gmailcom)
-![Version](https://img.shields.io/badge/version-1.3.8-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 
 No subscription. No monthly fee. Just your own computer — and an optional API key if you want smarter responses.
 
@@ -23,6 +23,7 @@ It's local-first by design. Your data stays on your machine. Cloud AI is optiona
 - **Remembers your conversations** — even after restarts, across sessions
 - **Thinks in the background** — a local AI model runs quietly 24/7, building context over time
 - **Answers questions using web search** — no API key required (DuckDuckGo built in)
+- **Live financial prices** — silver, gold, bitcoin, stocks, oil and more via Yahoo Finance (no API key, always free)
 - **Hands off complex questions** to a cloud AI if you add a key
 - **Texts you reminders** to your phone via Telegram
 - **Talks back** with a voice response (TTS works out of the box)
@@ -139,6 +140,7 @@ Your message
 Local model scores complexity
      ↓
 Simple?        → Local model answers (free, instant)
+Price question? → Yahoo Finance (free, no key needed)
 News/current?  → Web search → local model summarizes
 Complex?       → Cloud AI answers (uses API key if set)
      ↓
@@ -157,6 +159,7 @@ Memory is stored in a local SQLite database. It uses a four-layer nesting-doll s
 |---|---|
 | Chat | ✅ local model |
 | Web search | ✅ DuckDuckGo built in |
+| Live prices (silver, gold, crypto, stocks) | ✅ Yahoo Finance, no key needed |
 | Memory | ✅ fully local SQLite |
 | TTS voice | ✅ edge-tts (free, Microsoft neural voices) |
 | Reminders | ✅ fully local |
@@ -254,7 +257,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Telegram** can be restricted to specific user IDs via `TELEGRAM_ALLOWED_USERS`.
 - **Web search results** are sanitized before being fed into model prompts to reduce prompt injection risk.
 - **Cloud APIs** only receive your message and minimal memory context — your full memory database never leaves your machine.
-- **Extensively audited** — 60+ bugs fixed across 20+ rounds of parallel Opus + Gemini + Grok security review before public release.
+- **Extensively audited** — 90+ bugs fixed across 26+ rounds of parallel Opus + Gemini + Grok security review before public release.
 
 ---
 
