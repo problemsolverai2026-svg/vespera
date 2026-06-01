@@ -34,29 +34,6 @@ MAX_RESULTS = 4
 # FINANCIAL PRICE LOOKUP — Yahoo Finance (no API key needed)
 # ─────────────────────────────────────────────
 
-# Keyword → Yahoo Finance ticker mapping
-_PRICE_TICKERS = {
-    "silver":       "SI=F",
-    "gold":         "GC=F",
-    "bitcoin":      "BTC-USD",
-    "btc":          "BTC-USD",
-    "ethereum":     "ETH-USD",
-    "eth":          "ETH-USD",
-    "crude oil":    "CL=F",
-    "oil":          "CL=F",
-    "natural gas":  "NG=F",
-    "s&p 500":      "^GSPC",
-    "s&p":          "^GSPC",
-    "sp500":        "^GSPC",
-    "dow jones":    "^DJI",
-    "dow":          "^DJI",
-    "djia":         "^DJI",
-    "nasdaq":       "^IXIC",
-    "copper":       "HG=F",
-    "platinum":     "PL=F",
-    "palladium":    "PA=F",
-}
-
 _PRICE_KEYWORDS = {"price", "cost", "worth", "value", "how much", "per ounce", "per share", "trading at", "spot"}
 
 # Word-boundary patterns for each asset keyword — prevents matching inside other words

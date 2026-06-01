@@ -121,12 +121,13 @@ def call_local(prompt: str) -> str | None:
 # COMPLEXITY SCORER
 # ─────────────────────────────────────────────
 
-# Price keywords for pre-check — avoids losing price queries when Ollama is slow/down
+# Price keywords for pre-check — avoids losing price queries when Ollama is slow/down.
+# Deliberately narrow: only unambiguous financial phrases paired with asset names.
+# "cost" and "worth" are intentionally excluded — too many false positives.
+_ASSETS = r"(silver|gold|bitcoin|btc|ethereum|eth|crude oil|oil|natural gas|nasdaq|dow jones|dow|djia|s&p 500|s&p|sp500|copper|platinum|palladium)"
 _PRICE_PRE_CHECK = re.compile(
-    r"\b(price|cost|worth|spot|per ounce|per share|trading at|how much)\b.*"
-    r"\b(silver|gold|bitcoin|btc|ethereum|eth|oil|crude|nasdaq|dow|s&p|copper|platinum|palladium)\b"
-    r"|\b(silver|gold|bitcoin|btc|ethereum|eth|oil|crude|nasdaq|dow|s&p|copper|platinum|palladium)\b.*"
-    r"\b(price|cost|worth|spot|per ounce|per share|trading at|how much)\b",
+    r"\b(price|spot price|per ounce|per share|trading at|market price)\b.*" + _ASSETS
+    + r"|" + _ASSETS + r".*\b(price|spot price|per ounce|per share|trading at|market price)\b",
     re.IGNORECASE,
 )
 

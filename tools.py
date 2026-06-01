@@ -174,6 +174,9 @@ def run_write_file(path: str, content: str) -> str:
     try:
         p = Path(resolved)
         p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists():
+            import logging
+            logging.getLogger("tools").warning("Overwriting existing file: %s", resolved)
         p.write_text(content, encoding="utf-8")
         return f"Written: {resolved}"
     except Exception as e:

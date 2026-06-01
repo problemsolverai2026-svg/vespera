@@ -86,6 +86,25 @@ def run_pruning():
 
 
 _shutdown = threading.Event()
+_LAST_RUN_KEY = Path(__file__).parent / ".pruning_last_run"
+
+
+def _should_run() -> bool:
+    """Return True only if enough time has passed since last pruning run."""
+    interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
+    try:
+        last = float(_LAST_RUN_KEY.read_text().strip())
+        return (time.time() - last) >= interval
+    except Exception:
+        return True  # no record = run it
+
+
+def _mark_ran():
+    try:
+        _LAST_RUN_KEY.write_text(str(time.time()))
+    except Exception:
+        pass
+
 
 def run_loop(shutdown_event: threading.Event = None):
     global _shutdown
@@ -96,7 +115,11 @@ def run_loop(shutdown_event: threading.Event = None):
     log.info("Started — model: %s — every %d days", OLLAMA_MODEL, PRUNING_INTERVAL_DAYS)
     while not _shutdown.is_set():
         try:
-            run_pruning()
+            if _should_run():
+                run_pruning()
+                _mark_ran()
+            else:
+                log.debug("Skipping pruning — not enough time since last run.")
         except Exception as e:
             log.error("Error: %s", e)
         _shutdown.wait(interval)
