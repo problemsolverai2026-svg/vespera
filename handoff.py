@@ -13,6 +13,7 @@ Handle locally if:
   - Local model has clear context from memory
 """
 
+import re
 import requests
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
 from utils import get_logger, _sanitize
@@ -120,8 +121,21 @@ def call_local(prompt: str) -> str | None:
 # COMPLEXITY SCORER
 # ─────────────────────────────────────────────
 
+# Price keywords for pre-check — avoids losing price queries when Ollama is slow/down
+_PRICE_PRE_CHECK = re.compile(
+    r"\b(price|cost|worth|spot|per ounce|per share|trading at|how much)\b.*"
+    r"\b(silver|gold|bitcoin|btc|ethereum|eth|oil|crude|nasdaq|dow|s&p|copper|platinum|palladium)\b"
+    r"|\b(silver|gold|bitcoin|btc|ethereum|eth|oil|crude|nasdaq|dow|s&p|copper|platinum|palladium)\b.*"
+    r"\b(price|cost|worth|spot|per ounce|per share|trading at|how much)\b",
+    re.IGNORECASE,
+)
+
+
 def score_complexity(message: str) -> tuple[float, str, bool]:
     from utils import parse_json_response
+    # Quick pre-check: force needs_search for obvious price queries before hitting Ollama
+    if _PRICE_PRE_CHECK.search(message):
+        return 0.8, "price query detected", True
     raw = call_local(COMPLEXITY_CHECK_PROMPT.format(message=message))
     if not raw:
         return 0.5, "model unavailable", False

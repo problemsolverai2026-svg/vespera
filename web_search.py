@@ -12,6 +12,7 @@ Users with no API keys get DuckDuckGo automatically.
 """
 
 import os
+import re
 import requests
 from utils import get_logger, _INJECTION_RE  # single source of truth for injection pattern
 
@@ -58,14 +59,38 @@ _PRICE_TICKERS = {
 
 _PRICE_KEYWORDS = {"price", "cost", "worth", "value", "how much", "per ounce", "per share", "trading at", "spot"}
 
+# Word-boundary patterns for each asset keyword — prevents matching inside other words
+# e.g. "eth" must not match "ethernet", "oil" must not match "boiling", "dow" not "download"
+_PRICE_PATTERNS = {
+    re.compile(r"\bsilver\b"):       "SI=F",
+    re.compile(r"\bgold\b"):         "GC=F",
+    re.compile(r"\bbitcoin\b"):      "BTC-USD",
+    re.compile(r"\bbtc\b"):          "BTC-USD",
+    re.compile(r"\bethereum\b"):     "ETH-USD",
+    re.compile(r"\beth\b"):          "ETH-USD",
+    re.compile(r"\bcrude oil\b"):    "CL=F",
+    re.compile(r"\boil\b"):          "CL=F",
+    re.compile(r"\bnatural gas\b"): "NG=F",
+    re.compile(r"\bs&p 500\b"):      "^GSPC",
+    re.compile(r"\bs&p\b"):          "^GSPC",
+    re.compile(r"\bsp500\b"):        "^GSPC",
+    re.compile(r"\bdow jones\b"):    "^DJI",
+    re.compile(r"\bdow\b"):          "^DJI",
+    re.compile(r"\bdjia\b"):         "^DJI",
+    re.compile(r"\bnasdaq\b"):       "^IXIC",
+    re.compile(r"\bcopper\b"):       "HG=F",
+    re.compile(r"\bplatinum\b"):     "PL=F",
+    re.compile(r"\bpalladium\b"):    "PA=F",
+}
+
 
 def _is_price_query(query: str) -> str | None:
     """Return a Yahoo Finance ticker if the query looks like a price question, else None."""
     q = query.lower()
     if not any(kw in q for kw in _PRICE_KEYWORDS):
         return None
-    for keyword, ticker in _PRICE_TICKERS.items():
-        if keyword in q:
+    for pattern, ticker in _PRICE_PATTERNS.items():
+        if pattern.search(q):
             return ticker
     return None
 
@@ -86,7 +111,9 @@ def _fetch_price(ticker: str) -> str | None:
         name     = meta.get("shortName") or meta.get("symbol", ticker)
         if price is None:
             return None
-        return f"{name}: ${price:,.4f} {currency} (Yahoo Finance live)"
+        name = _sanitize_result(str(name))  # sanitize before it enters any prompt
+        fmt  = f"${price:,.2f}" if price >= 1 else f"${price:,.4f}"
+        return f"{name}: {fmt} {currency} (Yahoo Finance live)"
     except Exception as e:
         log.error("Yahoo Finance error (%s): %s", ticker, e)
         return None
