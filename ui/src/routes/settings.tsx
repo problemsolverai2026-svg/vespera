@@ -3,6 +3,15 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { vespera, type ComponentInfo } from "@/lib/vespera";
 
+interface AppSetting {
+  key: string;
+  label: string;
+  description: string;
+  type: "number" | "float";
+  value: number;
+  default: number;
+}
+
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings · Vespera" }] }),
   component: SettingsPage,
@@ -78,15 +87,58 @@ function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
+  const [settings, setSettings] = useState<AppSetting[]>([]);
+  const [settingVals, setSettingVals] = useState<Record<string, number>>({});
+  const [settingSaving, setSettingSaving] = useState(false);
+  const [settingMsg, setSettingMsg] = useState<string | null>(null);
+
   const load = () => {
     setLoading(true);
     vespera
       .components()
-      .then((r) => setComps(Array.isArray(r) ? r : []))
+      .then((r: any) => {
+        const arr = Array.isArray(r) ? r : Object.values(r ?? {});
+        setComps(arr as ComponentInfo[]);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed"))
       .finally(() => setLoading(false));
   };
-  useEffect(load, []);
+
+  const loadSettings = () => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((r: any) => {
+        const list: AppSetting[] = r.settings ?? [];
+        setSettings(list);
+        const vals: Record<string, number> = {};
+        list.forEach((s) => (vals[s.key] = s.value));
+        setSettingVals(vals);
+      })
+      .catch(() => {});
+  };
+
+  const saveSettings = async () => {
+    setSettingSaving(true);
+    setSettingMsg(null);
+    try {
+      const body: Record<string, number> = {};
+      settings.forEach((s) => (body[s.key] = settingVals[s.key] ?? s.value));
+      const r = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error("Save failed");
+      setSettingMsg("Saved");
+    } catch (e) {
+      setSettingMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSettingSaving(false);
+      setTimeout(() => setSettingMsg(null), 2500);
+    }
+  };
+
+  useEffect(() => { load(); loadSettings(); }, []);
 
   const run = async (kind: "cleanup" | "prune") => {
     setActionMsg(`${kind}…`);
@@ -141,6 +193,54 @@ function SettingsPage() {
             <ComponentCard key={c.name} c={c} onSaved={load} />
           ))}
         </div>
+
+        {settings.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-md font-medium">System Settings</h2>
+                <p className="text-sm text-muted-foreground">Tune Vespera's behaviour.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {settingMsg && <span className="text-xs text-muted-foreground">{settingMsg}</span>}
+                <button
+                  onClick={saveSettings}
+                  disabled={settingSaving}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+                >
+                  {settingSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {settings.map((s) => (
+                <div key={s.key} className="rounded-lg border border-border bg-card p-4">
+                  <label className="block">
+                    <div className="flex items-baseline justify-between">
+                      <span className="font-mono text-sm">{s.label}</span>
+                      <span className="text-xs text-muted-foreground">default: {s.default}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{s.description}</p>
+                    <input
+                      type="number"
+                      step={s.type === "float" ? 0.05 : 1}
+                      min={s.type === "float" ? 0 : 1}
+                      max={s.type === "float" ? 1 : undefined}
+                      value={settingVals[s.key] ?? s.value}
+                      onChange={(e) =>
+                        setSettingVals((prev) => ({
+                          ...prev,
+                          [s.key]: s.type === "float" ? parseFloat(e.target.value) : parseInt(e.target.value, 10),
+                        }))
+                      }
+                      className="mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-ring"
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );
