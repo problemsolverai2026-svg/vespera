@@ -386,7 +386,7 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
 
 def handle_message(message: str) -> dict:
     # Sanitize user input before it touches any prompt or storage
-    message = _sanitize(message, 8000) or message
+    message = _sanitize(message, 8000)
     memories, recent = get_context()
     complexity, reason, needs_search = score_complexity(message)
     log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)

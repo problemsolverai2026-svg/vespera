@@ -120,7 +120,11 @@ PRUNING_INTERVAL_DAYS    = _int("PRUNING_INTERVAL_DAYS",    3)
 # TUNING
 # ─────────────────────────────────────────────
 
-COMPLEXITY_THRESHOLD = _float("COMPLEXITY_THRESHOLD", 0.65)
+_raw_threshold = _float("COMPLEXITY_THRESHOLD", 0.65)
+if not (0.0 <= _raw_threshold <= 1.0):
+    print(f"[config] WARNING: COMPLEXITY_THRESHOLD={_raw_threshold} out of range (0.0–1.0) — clamping to 0.65")
+    _raw_threshold = 0.65
+COMPLEXITY_THRESHOLD = _raw_threshold
 MAX_THOUGHT_LENGTH   = _int("MAX_THOUGHT_LENGTH",     300)
 CLEANUP_BATCH_SIZE   = _int("CLEANUP_BATCH_SIZE",     5)
 PRUNING_BATCH_SIZE   = _int("PRUNING_BATCH_SIZE",     20)

@@ -299,7 +299,9 @@ def chat():
         return jsonify({"ok": False, "error": "Message too long (max 8000 chars)"}), 400
 
     from handoff import handle_message
-    add_conversation(role="user", content=message)
+    from utils import _sanitize
+    safe_message = _sanitize(message, 8000) or message
+    add_conversation(role="user", content=safe_message)
     try:
         result = handle_message(message)
         if not isinstance(result, dict):
@@ -313,7 +315,7 @@ def chat():
         add_conversation(
             role="assistant",
             content=response_text,
-            used_cloud=(handled_by == "cloud"),
+            used_cloud=(handled_by in ("cloud", "search+cloud")),
             complexity=complexity_score,
         )
 
