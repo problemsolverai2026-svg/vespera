@@ -29,6 +29,73 @@ BRAVE_SEARCH_URL  = "https://api.search.brave.com/res/v1/web/search"
 
 MAX_RESULTS = 4
 
+# ─────────────────────────────────────────────
+# FINANCIAL PRICE LOOKUP — Yahoo Finance (no API key needed)
+# ─────────────────────────────────────────────
+
+# Keyword → Yahoo Finance ticker mapping
+_PRICE_TICKERS = {
+    "silver":       "SI=F",
+    "gold":         "GC=F",
+    "bitcoin":      "BTC-USD",
+    "btc":          "BTC-USD",
+    "ethereum":     "ETH-USD",
+    "eth":          "ETH-USD",
+    "crude oil":    "CL=F",
+    "oil":          "CL=F",
+    "natural gas":  "NG=F",
+    "s&p 500":      "^GSPC",
+    "s&p":          "^GSPC",
+    "sp500":        "^GSPC",
+    "dow jones":    "^DJI",
+    "dow":          "^DJI",
+    "djia":         "^DJI",
+    "nasdaq":       "^IXIC",
+    "copper":       "HG=F",
+    "platinum":     "PL=F",
+    "palladium":    "PA=F",
+}
+
+_PRICE_KEYWORDS = {"price", "cost", "worth", "value", "how much", "per ounce", "per share", "trading at", "spot"}
+
+
+def _is_price_query(query: str) -> str | None:
+    """Return a Yahoo Finance ticker if the query looks like a price question, else None."""
+    q = query.lower()
+    if not any(kw in q for kw in _PRICE_KEYWORDS):
+        return None
+    for keyword, ticker in _PRICE_TICKERS.items():
+        if keyword in q:
+            return ticker
+    return None
+
+
+def _fetch_price(ticker: str) -> str | None:
+    """Fetch current price from Yahoo Finance. Returns formatted string or None on failure."""
+    resp = None
+    try:
+        resp = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "*/*"},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        meta = resp.json()["chart"]["result"][0]["meta"]
+        price    = meta.get("regularMarketPrice")
+        currency = meta.get("currency", "USD")
+        name     = meta.get("shortName") or meta.get("symbol", ticker)
+        if price is None:
+            return None
+        return f"{name}: ${price:,.4f} {currency} (Yahoo Finance live)"
+    except Exception as e:
+        log.error("Yahoo Finance error (%s): %s", ticker, e)
+        return None
+    finally:
+        try:
+            if resp is not None: resp.close()
+        except Exception:
+            pass
+
 
 # ─────────────────────────────────────────────
 # PROVIDERS
@@ -106,9 +173,17 @@ def _sanitize_result(text: str) -> str:
 def search(query: str) -> str:
     """
     Search the web and return a formatted string of results.
-    Auto-selects the best available provider.
+    Checks for price queries first (Yahoo Finance, no API key).
+    Falls back to web search providers for everything else.
     Returns empty string if all providers fail.
-    """
+    """    
+    # Price lookup — runs before web search, no API key needed
+    ticker = _is_price_query(query)
+    if ticker:
+        price_result = _fetch_price(ticker)
+        if price_result:
+            log.info("Yahoo Finance — price lookup for: %s", query)
+            return price_result
     providers = []
     if VENICE_API_KEY:
         providers.append(("Venice", _search_venice))
