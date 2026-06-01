@@ -398,8 +398,10 @@ def handle_message(message: str) -> dict:
             from datetime import datetime
             today = datetime.now().strftime("%A, %B %d, %Y")
             formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results, message=message)
-            response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
-            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "search+cloud", "complexity": complexity}
+            response = call_local(formatted_prompt)
+            if not response:
+                response = "I found search results but couldn't summarize them — local model unavailable."
+            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "search+local", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local
     if complexity >= COMPLEXITY_THRESHOLD:

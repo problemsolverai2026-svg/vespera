@@ -315,7 +315,7 @@ def chat():
         add_conversation(
             role="assistant",
             content=response_text,
-            used_cloud=(handled_by in ("cloud", "search+cloud")),
+            used_cloud=(handled_by == "cloud"),
             complexity=complexity_score,
         )
 
