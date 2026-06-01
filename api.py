@@ -671,21 +671,8 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, _handle_sigterm)
     # ───────────────────────────────────────────────────────────────────
 
-    def find_free_port(start: int, max_tries: int = 10) -> int:
-        for p in range(start, start + max_tries):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                try:
-                    s.bind(("", p))
-                    return p
-                except OSError:
-                    continue
-        raise RuntimeError(f"No free port found starting at {start}")
-
     base_port = int(os.getenv("API_PORT", "5055"))
-    port = find_free_port(base_port)
-    if port != base_port:
-        print(f"[Vespera API] Port {base_port} in use — using {port} instead.")
-        print(f"[Vespera API] Tip: set API_PORT={port} in your .env to make this permanent.")
+    port = base_port
 
     # Write actual port so start.sh / telegram_bot.py can find it
     (Path(__file__).parent / ".port").write_text(str(port))
