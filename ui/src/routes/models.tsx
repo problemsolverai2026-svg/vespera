@@ -76,7 +76,7 @@ function ModelsPage() {
   useEffect(() => {
     vespera
       .models()
-      .then((r) => setModels(Array.isArray(r) ? r : []))
+      .then((r: any) => setModels(Array.isArray(r) ? r : Array.isArray(r?.models) ? r.models : []))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed"))
       .finally(() => setLoading(false));
   }, []);
