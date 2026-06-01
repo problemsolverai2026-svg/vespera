@@ -19,7 +19,7 @@ const COMPONENTS: { name: string; description: string }[] = [
   { name: "TTS/Voice", description: "Generates spoken audio replies you can play back in the browser." },
 ];
 
-function ApiKeyCard({ name, description }: { name: string; description: string }) {
+function ApiKeyCard({ name, description, hasKey }: { name: string; description: string; hasKey?: boolean }) {
   const [value, setValue] = useState("");
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,7 +44,10 @@ function ApiKeyCard({ name, description }: { name: string; description: string }
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-baseline justify-between">
         <h3 className="font-mono text-sm">{name}</h3>
-        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+        <div className="flex items-center gap-2">
+          {hasKey && !msg && <span className="text-xs text-green-500">✓ key set</span>}
+          {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{description}</p>
       <label className="mt-3 block">
@@ -174,9 +177,17 @@ function SecurityField<K extends keyof SecuritySettings>({
 
 function ApiKeysPage() {
   const [sec, setSec] = useState<SecuritySettings | null>(null);
+  const [componentStatus, setComponentStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     vespera.security().then(setSec).catch(() => setSec({}));
+    vespera.components().then((data) => {
+      const status: Record<string, boolean> = {};
+      Object.values(data as Record<string, { name: string; has_api_key?: boolean }>).forEach((c) => {
+        status[c.name] = !!c.has_api_key;
+      });
+      setComponentStatus(status);
+    }).catch(() => {});
   }, []);
 
   return (
@@ -199,7 +210,7 @@ function ApiKeysPage() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           {COMPONENTS.map((c) => (
-            <ApiKeyCard key={c.name} name={c.name} description={c.description} />
+            <ApiKeyCard key={c.name} name={c.name} description={c.description} hasKey={componentStatus[c.name]} />
           ))}
         </div>
 
