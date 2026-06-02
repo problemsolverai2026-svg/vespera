@@ -75,8 +75,14 @@ def init_db():
         with _connect() as conn:
             for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
                 if not _column_exists(conn, "conversations", col):
-                    conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
-                    log.info("Migrated conversations: added column %s", col)
+                    try:
+                        conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
+                        log.info("Migrated conversations: added column %s", col)
+                    except sqlite3.OperationalError as e:
+                        if "duplicate column name" in str(e).lower():
+                            log.debug("Column %s already added by concurrent process — skipping", col)
+                        else:
+                            raise
     log.info("Memory store initialized at %s", DB_PATH)
 
 

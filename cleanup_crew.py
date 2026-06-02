@@ -7,7 +7,6 @@ Reviews 'recent' memories — promotes good ones to 'validated', prunes garbage.
 
 import time
 import threading
-import requests
 from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory
 from utils import get_logger, parse_json_response, _sanitize

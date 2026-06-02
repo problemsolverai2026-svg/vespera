@@ -120,12 +120,13 @@ def _search_duckduckgo(query: str) -> list[dict]:
         return []
 
 
-def _search_brave(query: str) -> list[dict]:
+def _search_brave(query: str, api_key: str = None) -> list[dict]:
+    key = api_key or os.getenv("BRAVE_API_KEY", BRAVE_API_KEY)
     resp = None
     try:
         resp = requests.get(
             BRAVE_SEARCH_URL,
-            headers={"Accept": "application/json", "X-Subscription-Token": BRAVE_API_KEY},
+            headers={"Accept": "application/json", "X-Subscription-Token": key},
             params={"q": query, "count": MAX_RESULTS},
             timeout=10,
         )
@@ -142,12 +143,13 @@ def _search_brave(query: str) -> list[dict]:
             pass
 
 
-def _search_venice(query: str) -> list[dict]:
+def _search_venice(query: str, api_key: str = None) -> list[dict]:
+    key = api_key or os.getenv("VENICE_API_KEY", VENICE_API_KEY)
     resp = None
     try:
         resp = requests.post(
             VENICE_SEARCH_URL,
-            headers={"Authorization": f"Bearer {VENICE_API_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={"query": query, "num_results": MAX_RESULTS},
             timeout=10,
         )
@@ -204,9 +206,9 @@ def search(query: str) -> str:
 
     providers = []
     if _venice_key:
-        providers.append(("Venice", _search_venice))
+        providers.append(("Venice", lambda q: _search_venice(q, api_key=_venice_key)))
     if _brave_key:
-        providers.append(("Brave", _search_brave))
+        providers.append(("Brave", lambda q: _search_brave(q, api_key=_brave_key)))
     providers.append(("DuckDuckGo", _search_duckduckgo))
 
     provider = "none"

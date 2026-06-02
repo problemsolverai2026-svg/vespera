@@ -7,7 +7,6 @@ Stricter than cleanup crew — promotes the best to 'core', prunes the rest.
 
 import time
 import threading
-import requests
 from config import get_component, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE
 from memory.store import init_db, get_memories, promote_memory, prune_memory, touch_memory
 from utils import get_logger, parse_json_response, _sanitize
