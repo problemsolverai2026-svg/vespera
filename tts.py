@@ -65,8 +65,15 @@ def _tts_venice(text: str) -> str | None:
             timeout=30,
         )
         resp.raise_for_status()
+        # Cap at 10 MB — consistent with the 5 MB cap in telegram_bot.py;
+        # Venice TTS audio is typically <1 MB so this only catches runaway responses.
+        _MAX_TTS_BYTES = 10 * 1024 * 1024
+        audio_bytes = resp.content
+        if len(audio_bytes) > _MAX_TTS_BYTES:
+            log.warning("Venice TTS response exceeded 10 MB — discarding")
+            return None
         out = TTS_DIR / f"{uuid.uuid4().hex}.mp3"
-        out.write_bytes(resp.content)
+        out.write_bytes(audio_bytes)
         log.debug("Venice → %s", out.name)
         return str(out)
     except Exception as e:

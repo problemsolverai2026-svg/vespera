@@ -17,6 +17,7 @@ No external calendar needed — fully local.
 import os
 import uuid
 import threading
+import concurrent.futures
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -135,6 +136,10 @@ def reschedule_or_complete(reminder: dict):
     fire_at = datetime.fromisoformat(reminder["fire_at"])
     if fire_at.tzinfo is None:
         fire_at = fire_at.replace(tzinfo=timezone.utc)
+    # Clamp to now before adding the delta — if the system was offline for days,
+    # old anchored timestamps cause a notification storm as every missed interval
+    # fires back-to-back until the math catches up to the present.
+    fire_at = max(fire_at, datetime.now(timezone.utc))
     if recur == "daily":
         next_fire = fire_at + relativedelta(days=1)
     elif recur == "weekly":
@@ -248,12 +253,7 @@ def fire_reminder(reminder: dict):
     # Snapshot the list first — prevents RuntimeError if register_callback()
     # appends concurrently while we're iterating.
     for cb in list(_callbacks):
-        threading.Thread(
-            target=_safe_callback,
-            args=(cb, reminder, audio),
-            daemon=True,
-            name="reminder-callback",
-        ).start()
+        _callback_pool.submit(_safe_callback, cb, reminder, audio)
 
     # Reschedule or complete exactly once, regardless of callback count.
     try:
@@ -288,6 +288,8 @@ def register_callback(fn):
 # ─────────────────────────────────────────────
 
 _shutdown = threading.Event()  # fallback when run() is called without an event
+# Bounded pool for reminder callbacks — prevents unbounded thread spawn under burst
+_callback_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="reminder-cb")
 
 def run(shutdown_event: threading.Event = None):
     evt = shutdown_event if shutdown_event is not None else _shutdown

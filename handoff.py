@@ -33,6 +33,12 @@ CLOUD_MODEL    = _cloud["model"]
 CLOUD_API_KEY  = _cloud["api_key"]
 CLOUD_BASE_URL = _cloud.get("base_url", "")
 MAX_RESPONSE_LENGTH = 2000  # truncate responses before storing to conversation history
+
+def _trim(text: str) -> str:
+    """Trim to MAX_RESPONSE_LENGTH with an indicator so the frontend knows it was cut."""
+    if len(text) <= MAX_RESPONSE_LENGTH:
+        return text
+    return text[:MAX_RESPONSE_LENGTH - 20].rstrip() + "\n\n[response truncated]"
 from memory.store import get_memories, get_recent_conversations
 from web_search import search as web_search
 from tools import TOOL_DEFINITIONS, run_tool
@@ -434,10 +440,15 @@ def handle_message(message: str) -> dict:
             if len(results) > 3000:
                 results_capped += "\n[search results truncated]"
             formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results_capped, message=message)
+            # Route to cloud if the query is both real-time AND complex — local model
+            # was always used before even when complexity >= threshold.
+            if complexity >= COMPLEXITY_THRESHOLD and os.getenv("CLOUD_API_KEY", ""):
+                response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
+                return {"response": _trim(response), "handled_by": "search+cloud", "complexity": complexity}
             response = call_local(formatted_prompt)
             if not response:
                 response = "I found search results but couldn't summarize them — local model unavailable."
-            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "search+local", "complexity": complexity}
+            return {"response": _trim(response), "handled_by": "search+local", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local
     # Re-read the key here too — the gate must match respond_cloud()'s live read
@@ -445,20 +456,20 @@ def handle_message(message: str) -> dict:
     if complexity >= COMPLEXITY_THRESHOLD:
         if os.getenv("CLOUD_API_KEY", ""):
             response = respond_cloud(message, memories, recent)
-            return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "cloud", "complexity": complexity}
+            return {"response": _trim(response), "handled_by": "cloud", "complexity": complexity}
         # No cloud key — try local
         response, _ = respond_locally(message, memories, recent)
         if not response:
             response = "I'm having trouble reaching my local model right now. Please check that Ollama is running."
-        return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "local", "complexity": complexity}
+        return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
 
     # Simple — local model
     response, needs_handoff = respond_locally(message, memories, recent)
     if needs_handoff:
         response = respond_cloud(message, memories, recent)
-        return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "cloud", "complexity": complexity}
+        return {"response": _trim(response), "handled_by": "cloud", "complexity": complexity}
 
-    return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "local", "complexity": complexity}
+    return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
 
 
 if __name__ == "__main__":

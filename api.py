@@ -316,7 +316,7 @@ def chat():
         resp.headers["Retry-After"] = str(RATE_LIMIT_WINDOW_SECONDS)
         return resp, 429
     data = request.json or {}
-    message = data.get("message", "").strip()
+    message = str(data.get("message", "")).strip()
     if not message:
         return jsonify({"ok": False, "error": "No message provided"}), 400
     if len(message) > 8000:
@@ -362,7 +362,7 @@ def chat():
 
         return jsonify({
             "ok": True,
-            "response": response_text,
+            "response": safe_response,  # use sanitized version — same as what's stored in DB
             "handled_by": result.get("handled_by", "unknown"),
             "complexity": result.get("complexity", 0.0),
             "audio": tts_url,
@@ -500,7 +500,10 @@ def update_settings():
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)
-            # Also update in-process env so GET /api/settings reflects the new value immediately
+            # Also update in-process env so GET /api/settings reflects the new value immediately.
+            # NOTE: RATE_LIMIT_MAX_CALLS is a module-level constant frozen at import time —
+            # updating os.environ does NOT change the active rate limit until restart.
+            # This is intentional: the rate limiter requires a restart to take effect.
             os.environ[key] = str(value)
             updated.append(key)
 
@@ -569,7 +572,7 @@ def serve_audio(filename):
     from flask import send_from_directory
     import re
     # Only allow safe filenames (hex + extension)
-    if not re.match(r'^[a-f0-9]+\.(mp3|wav)$', filename):
+    if not re.match(r'^[a-f0-9]{32,64}\.(mp3|wav)$', filename):
         return jsonify({"ok": False, "error": "Invalid filename"}), 400
     from pathlib import Path as _Path
     tts_dir = str(_Path.home() / ".vespera" / "tts")

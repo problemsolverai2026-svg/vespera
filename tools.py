@@ -122,9 +122,9 @@ def run_shell(command: str, workdir: str = None) -> str:
     # Option-style args (e.g. --output=/etc/foo) are also checked.
     for arg in args[1:]:  # skip argv[0] (the binary itself)
         val = arg.split("=", 1)[-1] if "=" in arg else arg
-        # Resolve relative paths (including ../ traversal) against cwd so
-        # `../../etc/shadow` is caught the same as `/etc/shadow`.
-        if val.startswith("/") or val.startswith("~") or "." in val.split("/")[0]:
+        # Block absolute paths, home-relative paths, and any argument containing
+        # `..` (catches foo/../../../etc/shadow where split("/")[0] == "foo", no dot).
+        if ".." in val or val.startswith("/") or val.startswith("~"):
             resolved_arg = str(Path(HOME).joinpath(val.replace("~", HOME, 1)).resolve())
             if not _path_allowed(resolved_arg):
                 return f"Error: path not in allowed paths: {val}"

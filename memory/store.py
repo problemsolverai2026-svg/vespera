@@ -68,15 +68,15 @@ def init_db():
         schema = SCHEMA_PATH.read_text()
         with _connect() as conn:
             conn.executescript(schema)
-    # Run migrations in a separate connection — executescript() issues an implicit
-    # COMMIT so schema + ALTER can't share a single atomic transaction anyway.
-    # Use PRAGMA table_info to check column existence rather than swallowing
-    # OperationalError strings — more robust and won't mask real errors.
-    with _connect() as conn:
-        for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
-            if not _column_exists(conn, "conversations", col):
-                conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
-                log.info("Migrated conversations: added column %s", col)
+        # Run migrations inside the lock — two LaunchAgents starting simultaneously
+        # both see the column missing and both fire ALTER TABLE; the second crashes.
+        # executescript() issues an implicit COMMIT so schema + migration still need
+        # separate connections, but the lock prevents the race.
+        with _connect() as conn:
+            for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
+                if not _column_exists(conn, "conversations", col):
+                    conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
+                    log.info("Migrated conversations: added column %s", col)
     log.info("Memory store initialized at %s", DB_PATH)
 
 
@@ -138,6 +138,14 @@ def link_memories(
 
     link_id = str(uuid.uuid4())
     with _connect() as conn:
+        # Verify both memories exist before inserting — bad IDs cause opaque IntegrityError
+        missing = []
+        for mid in (memory_id_a, memory_id_b):
+            row = conn.execute("SELECT id FROM memories WHERE id = ? AND pruned = 0", (mid,)).fetchone()
+            if not row:
+                missing.append(mid)
+        if missing:
+            raise ValueError(f"Cannot link: memory ID(s) not found or pruned: {missing}")
         conn.execute(
             """
             INSERT INTO memory_links (id, memory_id_a, memory_id_b, relationship, strength, created_at)
@@ -183,6 +191,14 @@ def promote_memory(memory_id: str, new_trust_score: float = None) -> bool:
         return True
 
 
+def touch_memory(memory_id: str):
+    """Bump updated_at on a memory so it sorts to the back of 'oldest reviewed first' queries.
+    Used by periodic_pruning after a 'keep' decision to prevent starvation of older records.
+    """
+    with _connect() as conn:
+        conn.execute("UPDATE memories SET updated_at = ? WHERE id = ?", (_now(), memory_id))
+
+
 def prune_memory(memory_id: str, reason: str, pruned_by: str = "cleanup_crew"):
     """Soft-delete a memory and log it."""
     with _connect() as conn:
@@ -217,10 +233,19 @@ def get_memories(
     layer: str = None,
     limit: int = 20,
     include_pruned: bool = False,
+    order_by: str = "created_at DESC",
 ) -> list[dict]:
-    """Fetch memories, optionally filtered by layer."""
+    """Fetch memories, optionally filtered by layer.
+
+    order_by: SQL ORDER BY clause. Periodic pruning uses 'updated_at ASC' to
+    process oldest-reviewed memories first and avoid starvation of older records.
+    """
     if layer is not None and layer not in LAYERS:
         raise ValueError(f"Invalid layer: {layer!r}. Must be one of {LAYERS}")
+    # Whitelist order_by to prevent SQL injection via this parameter
+    _VALID_ORDER = {"created_at DESC", "created_at ASC", "updated_at DESC", "updated_at ASC", "trust_score DESC", "trust_score ASC"}
+    if order_by not in _VALID_ORDER:
+        raise ValueError(f"Invalid order_by: {order_by!r}")
     query = "SELECT * FROM memories WHERE 1=1"
     params = []
 
@@ -230,7 +255,7 @@ def get_memories(
         query += " AND layer = ?"
         params.append(layer)
 
-    query += " ORDER BY created_at DESC LIMIT ?"
+    query += f" ORDER BY {order_by} LIMIT ?"
     params.append(limit)
 
     with _connect() as conn:

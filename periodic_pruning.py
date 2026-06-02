@@ -9,7 +9,7 @@ import time
 import threading
 import requests
 from config import get_component, PRUNING_INTERVAL_DAYS, PRUNING_BATCH_SIZE
-from memory.store import init_db, get_memories, promote_memory, prune_memory
+from memory.store import init_db, get_memories, promote_memory, prune_memory, touch_memory
 from utils import get_logger, parse_json_response, _sanitize
 
 log = get_logger("periodic_pruning")
@@ -74,7 +74,9 @@ def run_pruning():
 
 
 def _run_pruning_inner():
-    validated = get_memories(layer="validated", limit=BATCH_SIZE)
+    # Sort oldest-reviewed first so newer 'keep' decisions don't permanently
+    # eclipse older memories that never get a chance to be evaluated.
+    validated = get_memories(layer="validated", limit=BATCH_SIZE, order_by="updated_at ASC")
     if not validated:
         log.debug("Nothing to prune.")
         return
@@ -91,6 +93,9 @@ def _run_pruning_inner():
             log.info("PRUNED   %s — %s", memory["id"][:8], reason)
             pruned += 1
         else:
+            # Touch the memory so it sorts to the back of the queue next run,
+            # giving older un-reviewed memories a chance to be evaluated.
+            touch_memory(memory["id"])
             kept += 1
     log.info("Done — promoted: %d, kept: %d, deleted: %d", promoted, kept, pruned)
 
