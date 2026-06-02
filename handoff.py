@@ -110,11 +110,13 @@ Answer directly based on the search results. Use today's date to determine what 
 
 
 def get_context() -> tuple[str, str]:
-    mems = get_memories(layer="core", limit=8) or get_memories(layer="validated", limit=8)
-    memory_str = "\n".join([f"- {_sanitize(m['content'], 150)}" for m in mems]) if mems else "No memories yet."
+    mems = get_memories(layer="core", limit=5) or get_memories(layer="validated", limit=5)
+    memory_str = "\n".join([f"- {_sanitize(m['content'], 120)}" for m in mems]) if mems else "No memories yet."
 
-    convs = get_recent_conversations(limit=20)
-    conv_lines = [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs)]
+    # Limit to 6 recent turns — llama3.2:3b has ~2K context; 20 turns easily overflows it.
+    # Cloud models get full context via CLOUD_CONTEXT_PROMPT when complexity routes there.
+    convs = get_recent_conversations(limit=6)
+    conv_lines = [f"{c['role'].upper()}: {_sanitize(c['content'], 150)}" for c in reversed(convs)]
     recent_str = "\n".join(conv_lines) if conv_lines else "No recent conversation."
 
     return memory_str, recent_str

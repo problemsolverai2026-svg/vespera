@@ -172,15 +172,30 @@ def list_components():
     """Return all components with their descriptions and current config."""
     auth_err = require_auth()
     if auth_err: return auth_err
+    # Re-read from env so has_api_key reflects UI saves without restart
+    try:
+        from dotenv import load_dotenv as _ldenv
+        _ldenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+    except ImportError:
+        pass
+    _ENV_PREFIX = {
+        "background_loop": "BACKGROUND",
+        "cleanup_crew":    "CLEANUP",
+        "periodic_pruning": "PRUNING",
+        "handoff":         "HANDOFF",
+        "cloud":           "CLOUD",
+    }
     safe = {}
     for name, cfg in COMPONENTS.items():
+        prefix = _ENV_PREFIX.get(name, name.upper())
+        live_key = os.getenv(f"{prefix}_API_KEY", cfg.get("api_key", ""))
         safe[name] = {
             "name": name,
             "description": cfg.get("description", ""),
             "role": cfg.get("role", ""),
             "model": cfg.get("ollama_model") or cfg.get("model", ""),
             "provider": cfg.get("provider", "ollama"),
-            "has_api_key": bool(cfg.get("api_key", "")),
+            "has_api_key": bool(live_key),
         }
     return jsonify({"ok": True, "components": safe})
 

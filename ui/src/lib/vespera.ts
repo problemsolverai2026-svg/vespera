@@ -83,7 +83,7 @@ export const vespera = {
     }),
   memories: (layer: string) => req<{ ok: boolean; memories: MemoryItem[] }>(`/api/memories?layer=${encodeURIComponent(layer)}`).then(r => r.memories),
   status: () => req<StatusResponse>("/api/status"),
-  components: () => req<ComponentInfo[]>("/api/components"),
+  components: () => req<{ ok: boolean; components: Record<string, ComponentInfo> }>("/api/components").then(r => r.components),
   updateComponent: (name: string, body: Partial<ComponentInfo>) =>
     req<ComponentInfo>(`/api/components/${encodeURIComponent(name)}`, {
       method: "POST",

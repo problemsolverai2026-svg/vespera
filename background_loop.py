@@ -56,9 +56,9 @@ def call_local(prompt: str) -> str | None:
 
 
 def think() -> str | None:
-    convs = get_recent_conversations(limit=20)
+    convs = get_recent_conversations(limit=4)  # only use 4 — fetching 20 and slicing was wasteful
     conversation = "\n".join(
-        [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs[:4])]
+        [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs)]
     ) if convs else "No conversations yet."
 
     mems = get_memories(layer="validated", limit=5) or get_memories(layer="core", limit=5)

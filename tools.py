@@ -120,25 +120,14 @@ def run_shell(command: str, workdir: str = None) -> str:
     # Since shell=False is used there is no shell expansion, so direct path
     # arguments like `cat /etc/passwd` or `ls ~/secret` are caught here.
     # Option-style args (e.g. --output=/etc/foo) are also checked.
-    # Determine the effective working directory now (before the workdir block below)
-    # so we can resolve relative arguments correctly.
-    effective_cwd = ALLOW_PATHS[0] if ALLOW_PATHS else HOME
+    # Determine the effective working directory first so relative args resolve correctly.
+    # Default to ALLOW_PATHS[0] (sandbox root) if no workdir given; fall back to HOME
+    # only if ALLOW_PATHS is empty (shouldn't happen in normal config).
+    if not ALLOW_PATHS:
+        return "Error: no allowed paths configured — shell access is fully restricted."
+    sandbox_root = str(Path(ALLOW_PATHS[0]).resolve())
 
-    # Check ALL arguments — absolute, home-relative, dotdot, AND plain relative.
-    # Plain relative paths like `cat .ssh/id_rsa` resolve against cwd and can
-    # escape the sandbox if cwd is HOME and ALLOW_PATHS is a subdirectory.
-    for i, arg in enumerate(args):
-        val = arg.split("=", 1)[-1] if (i > 0 and "=" in arg) else arg
-        if i > 0 and val.startswith("-"):
-            continue  # skip option flags like -v, --output
-        candidate = Path(val.replace("~", HOME, 1))
-        if not candidate.is_absolute():
-            candidate = Path(effective_cwd) / candidate
-        resolved_arg = str(candidate.resolve())
-        if not _path_allowed(resolved_arg):
-            return f"Error: path not in allowed paths: {val}"
-
-    cwd = HOME
+    cwd = sandbox_root
     if workdir:
         resolved_wd = str(Path(workdir.replace("~", HOME, 1)).expanduser())
         if not _path_allowed(resolved_wd):
@@ -146,6 +135,20 @@ def run_shell(command: str, workdir: str = None) -> str:
         if not os.path.isdir(resolved_wd):
             return "Error: workdir does not exist or is not a directory."
         cwd = resolved_wd
+
+    # Check ALL arguments (absolute, home-relative, dotdot, AND plain relative)
+    # resolved against the actual cwd so paths like `../secret.txt` are caught
+    # correctly relative to where the command will actually run.
+    for i, arg in enumerate(args):
+        val = arg.split("=", 1)[-1] if (i > 0 and "=" in arg) else arg
+        if i > 0 and val.startswith("-"):
+            continue  # skip option flags like -v, --output
+        candidate = Path(val.replace("~", HOME, 1))
+        if not candidate.is_absolute():
+            candidate = Path(cwd) / candidate
+        resolved_arg = str(candidate.resolve())
+        if not _path_allowed(resolved_arg):
+            return f"Error: path not in allowed paths: {val}"
     try:
         result = subprocess.run(
             args,

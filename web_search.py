@@ -192,10 +192,20 @@ def search(query: str) -> str:
         if price_result:
             log.info("Yahoo Finance — price lookup for: %s", query)
             return price_result
+    # Re-read keys on each call so UI saves take effect without restart
+    try:
+        from dotenv import load_dotenv as _ldenv
+        from pathlib import Path as _Path
+        _ldenv(_Path(__file__).parent / ".env", override=True)
+    except ImportError:
+        pass
+    _venice_key = os.getenv("VENICE_API_KEY", VENICE_API_KEY)
+    _brave_key  = os.getenv("BRAVE_API_KEY",  BRAVE_API_KEY)
+
     providers = []
-    if VENICE_API_KEY:
+    if _venice_key:
         providers.append(("Venice", _search_venice))
-    if BRAVE_API_KEY:
+    if _brave_key:
         providers.append(("Brave", _search_brave))
     providers.append(("DuckDuckGo", _search_duckduckgo))
 
