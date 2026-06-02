@@ -83,6 +83,11 @@ _cors_origins = [
 if os.getenv("VESPERA_DEV", "false").lower() == "true":
     # Dev-only: allow Vite's default port (set VESPERA_DEV=true in .env for local UI dev)
     _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
+    import logging as _logging
+    _logging.getLogger("vespera.api").warning(
+        "VESPERA_DEV=true — CORS is widened to include localhost:5173. "
+        "Do NOT use this setting in production."
+    )
 CORS(app, origins=_cors_origins)
 
 # init_db() is called once by main.py at startup — not here at import time
@@ -99,8 +104,10 @@ def _safe_env_value(v: str, max_len: int = 2048) -> str:
         .replace("\r", "")
         .replace("\x00", "")     # null bytes can truncate .env parsing
         .replace("\\", "\\\\")
-        .replace("$",  "\\$")   # escape $ so it stays literal in double-quoted .env values
-        .replace("`",  "")        # strip backticks — no safe escape in double-quoted bash
+        # NOTE: do NOT escape $ — python-dotenv does not expand variables,
+        # so escaping $ to \$ causes it to be read back as literal \$,
+        # which breaks any API key that legitimately contains a $ character.
+        .replace("`",  "")        # strip backticks — no safe escape in double-quoted values
         .replace('"', '\\"')
         .strip()
     )
@@ -208,6 +215,12 @@ def update_component(name):
             "handoff":         "HANDOFF",
             "cloud":           "CLOUD",
         }
+        if name not in _ENV_PREFIX:
+            app.logger.warning(
+                "update_component: no _ENV_PREFIX entry for component '%s' — "
+                "falling back to %s. Add it to _ENV_PREFIX to suppress this warning.",
+                name, name.upper()
+            )
         prefix = _ENV_PREFIX.get(name, name.upper())
         updated = []
 
@@ -300,10 +313,12 @@ def chat():
 
     from handoff import handle_message
     from utils import _sanitize
-    safe_message = _sanitize(message, 8000) or message
+    safe_message = _sanitize(message, 8000)
+    if not safe_message:
+        return jsonify({"ok": False, "error": "Message contained only invalid characters"}), 400
     add_conversation(role="user", content=safe_message)
     try:
-        result = handle_message(message)
+        result = handle_message(safe_message)
         if not isinstance(result, dict):
             raise ValueError(f"handle_message returned unexpected type: {type(result)}")
         response_text = result.get("response", "")
@@ -459,6 +474,11 @@ def update_settings():
                         lo, hi = bounds
                         if value < lo or value > hi:
                             return jsonify({"ok": False, "error": f"{key} must be {lo}–{hi}"}), 400
+                elif key == "TELEGRAM_ALLOWED_USERS":
+                    # Each entry must be a numeric Telegram user ID (or the field is empty)
+                    ids = [u.strip() for u in str(value).split(",") if u.strip()]
+                    if not all(u.isdigit() for u in ids):
+                        return jsonify({"ok": False, "error": "TELEGRAM_ALLOWED_USERS must be comma-separated numeric user IDs (e.g. 123456789)"}), 400
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": f"Invalid value for {key}"}), 400
             set_env(key, value)

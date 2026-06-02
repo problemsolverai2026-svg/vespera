@@ -115,6 +115,18 @@ def run_shell(command: str, workdir: str = None) -> str:
         return f"Error: invalid command syntax: {e}"
     if not args:
         return "Error: empty command."
+
+    # Path-check any arguments that look like absolute or home-relative paths.
+    # Since shell=False is used there is no shell expansion, so direct path
+    # arguments like `cat /etc/passwd` or `ls ~/secret` are caught here.
+    # Option-style args (e.g. --output=/etc/foo) are also checked.
+    for arg in args[1:]:  # skip argv[0] (the binary itself)
+        val = arg.split("=", 1)[-1] if "=" in arg else arg
+        if val.startswith("/") or val.startswith("~"):
+            resolved_arg = str(Path(val.replace("~", HOME, 1)).expanduser())
+            if not _path_allowed(resolved_arg):
+                return f"Error: path not in allowed paths: {val}"
+
     cwd = HOME
     if workdir:
         resolved_wd = str(Path(workdir.replace("~", HOME, 1)).expanduser())

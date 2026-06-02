@@ -31,11 +31,13 @@ _INJECTION_RE = re.compile(
 
 
 def _sanitize(text: str, max_len: int) -> str:
-    """Truncate and strip potential injection attempts from memory/conversation content."""
-    truncated = text[:max_len]
-    if _INJECTION_RE.search(truncated):
+    """Truncate, strip null bytes, and strip potential injection attempts."""
+    # Strip null bytes first — they can corrupt SQLite text columns and
+    # bypass injection pattern matching by splitting keywords across bytes.
+    cleaned = text.replace("\x00", "")[:max_len]
+    if _INJECTION_RE.search(cleaned):
         return "[content removed — possible injection attempt]"
-    return truncated
+    return cleaned
 
 
 def get_logger(name: str) -> logging.Logger:

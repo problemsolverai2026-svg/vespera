@@ -76,11 +76,13 @@ log = logging.getLogger(__name__)
 
 
 def is_allowed(user_id: int) -> bool:
-    # Default DENY if no allowlist is configured — bot should never be open to strangers
+    # Delegate to the canonical security module so any future changes there
+    # automatically apply here. Warning stays local for user-facing feedback.
+    from security import telegram_user_allowed as _sec_allowed
     if not ALLOWED_USERS:
         log.warning("TELEGRAM_ALLOWED_USERS not set — all users blocked. Add your ID to .env to use the bot.")
         return False
-    return str(user_id) in [u.strip() for u in ALLOWED_USERS.split(",")]
+    return _sec_allowed(user_id)
 
 
 def chat(message: str) -> dict:
@@ -154,10 +156,21 @@ def run():
                 base = _get_api_url()
                 headers = {"Authorization": f"Bearer {VESPERA_API_TOKEN}"} if VESPERA_API_TOKEN else {}
                 r = None
-                r = requests.get(f"{base}{audio_url}", headers=headers, timeout=15)
+                r = requests.get(f"{base}{audio_url}", headers=headers, timeout=15, stream=True)
                 try:
                     r.raise_for_status()
-                    audio_bytes = r.content
+                    # Cap at 5 MB — avoids loading an unexpectedly large file into RAM
+                    _MAX_AUDIO_BYTES = 5 * 1024 * 1024
+                    chunks = []
+                    total = 0
+                    for chunk in r.iter_content(chunk_size=8192):
+                        total += len(chunk)
+                        if total > _MAX_AUDIO_BYTES:
+                            log.warning("TTS audio exceeds 5 MB — skipping voice message")
+                            chunks = []
+                            break
+                        chunks.append(chunk)
+                    audio_bytes = b"".join(chunks) if chunks else None
                 finally:
                     try:
                         r.close()

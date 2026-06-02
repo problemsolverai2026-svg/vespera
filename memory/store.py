@@ -53,6 +53,12 @@ def _connect():
         conn.close()
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Return True if `column` already exists in `table`."""
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
 def init_db():
     """Initialize the database from schema."""
     schema = SCHEMA_PATH.read_text()
@@ -60,14 +66,13 @@ def init_db():
         conn.executescript(schema)
     # Run migrations in a separate connection — executescript() issues an implicit
     # COMMIT so schema + ALTER can't share a single atomic transaction anyway.
+    # Use PRAGMA table_info to check column existence rather than swallowing
+    # OperationalError strings — more robust and won't mask real errors.
     with _connect() as conn:
         for col, typedef in [("used_cloud", "INTEGER DEFAULT 0"), ("complexity", "REAL DEFAULT 0.0")]:
-            try:
+            if not _column_exists(conn, "conversations", col):
                 conn.execute(f"ALTER TABLE conversations ADD COLUMN {col} {typedef}")
                 log.info("Migrated conversations: added column %s", col)
-            except sqlite3.OperationalError as exc:
-                if "duplicate column name" not in str(exc).lower():
-                    raise  # real error — don't swallow it
     log.info("Memory store initialized at %s", DB_PATH)
 
 
@@ -210,6 +215,8 @@ def get_memories(
     include_pruned: bool = False,
 ) -> list[dict]:
     """Fetch memories, optionally filtered by layer."""
+    if layer is not None and layer not in LAYERS:
+        raise ValueError(f"Invalid layer: {layer!r}. Must be one of {LAYERS}")
     query = "SELECT * FROM memories WHERE 1=1"
     params = []
 
@@ -248,6 +255,7 @@ def get_linked_memories(memory_id: str) -> list[dict]:
 
 def get_recent_conversations(limit: int = 20) -> list[dict]:
     """Get the most recent conversation messages."""
+    limit = max(1, min(int(limit), 1000))
     with _connect() as conn:
         rows = conn.execute(
             "SELECT id, timestamp, role, content, summary, used_cloud, complexity FROM conversations ORDER BY timestamp DESC LIMIT ?",

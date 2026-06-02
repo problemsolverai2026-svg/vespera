@@ -208,8 +208,13 @@ Rules:
         fire_at = datetime.fromisoformat(data["fire_at"])
         if fire_at.tzinfo is None:
             fire_at = fire_at.replace(tzinfo=ZoneInfo(TIMEZONE))
-        if fire_at <= datetime.now(tz=ZoneInfo(TIMEZONE)):
+        now_tz = datetime.now(tz=ZoneInfo(TIMEZONE))
+        if fire_at <= now_tz:
             log.error("Parsed fire_at is in the past: %s", fire_at)
+            return None
+        max_future = now_tz + relativedelta(years=1)
+        if fire_at > max_future:
+            log.error("Parsed fire_at is more than 1 year in the future: %s", fire_at)
             return None
         _VALID_RECUR = {"daily", "weekly", "hourly"}
         recur_raw = data.get("recur")
@@ -240,7 +245,9 @@ def fire_reminder(reminder: dict):
 
     # Notify all registered callbacks in background threads so a slow
     # Telegram send never delays the next reminder from firing.
-    for cb in _callbacks:
+    # Snapshot the list first — prevents RuntimeError if register_callback()
+    # appends concurrently while we're iterating.
+    for cb in list(_callbacks):
         threading.Thread(
             target=_safe_callback,
             args=(cb, reminder, audio),

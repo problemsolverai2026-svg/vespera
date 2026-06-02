@@ -16,9 +16,14 @@ import os
 import uuid
 import asyncio
 import threading
+import concurrent.futures
 import requests
 from pathlib import Path
 from utils import get_logger
+
+# Module-level pool for edge-tts async dispatch — avoids spawning a new
+# ThreadPoolExecutor per concurrent speak() call.
+_edge_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="edge-tts")
 
 log = get_logger("tts")
 
@@ -85,10 +90,8 @@ def _tts_edge(text: str) -> str | None:
             asyncio.run(_run())
         except RuntimeError as e:
             if "already running" in str(e).lower():
-                # Inside an async context — use thread executor
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    pool.submit(asyncio.run, _run()).result()
+                # Inside an async context — dispatch to the module-level pool
+                _edge_pool.submit(asyncio.run, _run()).result(timeout=30)
             else:
                 raise  # re-raise unexpected RuntimeErrors
         log.debug("edge-tts → %s", out.name)

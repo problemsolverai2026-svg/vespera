@@ -64,6 +64,16 @@ def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
 
 
 def run_pruning():
+    if not _run_lock.acquire(blocking=False):
+        log.info("run_pruning() skipped — already running.")
+        return
+    try:
+        _run_pruning_inner()
+    finally:
+        _run_lock.release()
+
+
+def _run_pruning_inner():
     validated = get_memories(layer="validated", limit=BATCH_SIZE)
     if not validated:
         log.debug("Nothing to prune.")
@@ -85,8 +95,11 @@ def run_pruning():
     log.info("Done — promoted: %d, kept: %d, deleted: %d", promoted, kept, pruned)
 
 
-_shutdown = threading.Event()
-_LAST_RUN_KEY = Path(__file__).parent / ".pruning_last_run"
+_shutdown  = threading.Event()
+_run_lock  = threading.Lock()   # prevents manual API trigger overlapping with background loop
+# Store last-run timestamp in ~/.vespera/ (user-writable) rather than the project
+# directory so read-only deployments (Docker, /opt/) don't silently fail to persist it.
+_LAST_RUN_KEY = Path.home() / ".vespera" / ".pruning_last_run"
 
 
 def _should_run() -> bool:
@@ -100,20 +113,25 @@ def _should_run() -> bool:
 
 
 def _mark_ran():
+    """Atomically write the last-run timestamp — temp file + rename prevents partial reads."""
     try:
-        _LAST_RUN_KEY.write_text(str(time.time()))
+        tmp = _LAST_RUN_KEY.with_suffix(".tmp")
+        tmp.write_text(str(time.time()))
+        tmp.replace(_LAST_RUN_KEY)
     except Exception:
         pass
 
 
 def run_loop(shutdown_event: threading.Event = None):
-    global _shutdown
-    if shutdown_event:
-        _shutdown = shutdown_event
+    evt = shutdown_event if shutdown_event is not None else _shutdown
     init_db()
-    interval = PRUNING_INTERVAL_DAYS * 24 * 60 * 60
-    log.info("Started — model: %s — every %d days", OLLAMA_MODEL, PRUNING_INTERVAL_DAYS)
-    while not _shutdown.is_set():
+    # Poll every hour rather than every interval — that way a restart only delays
+    # a due pruning run by at most 1 hour instead of a full 3-day interval.
+    # _should_run() checks the timestamp so actual pruning still only happens every
+    # PRUNING_INTERVAL_DAYS days.
+    poll_interval = 3600
+    log.info("Started — model: %s — every %d days (checked hourly)", OLLAMA_MODEL, PRUNING_INTERVAL_DAYS)
+    while not evt.is_set():
         try:
             if _should_run():
                 run_pruning()
@@ -122,7 +140,7 @@ def run_loop(shutdown_event: threading.Event = None):
                 log.debug("Skipping pruning — not enough time since last run.")
         except Exception as e:
             log.error("Error: %s", e)
-        _shutdown.wait(interval)
+        evt.wait(poll_interval)
     log.info("Stopped.")
 
 

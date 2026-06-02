@@ -89,15 +89,15 @@ def think() -> str | None:
     return raw[:MAX_THOUGHT_LENGTH]
 
 
-_shutdown = threading.Event()
+_shutdown = threading.Event()  # fallback used when run_loop() is called without an event
 
 def run_loop(shutdown_event: threading.Event = None):
-    global _shutdown
-    if shutdown_event:
-        _shutdown = shutdown_event
+    # Use a local reference rather than reassigning the module-level variable —
+    # avoids the global-reassignment anti-pattern that could confuse concurrent callers.
+    evt = shutdown_event if shutdown_event is not None else _shutdown
     init_db()
     log.info("Started — model: %s — every %ss — CPU limit: %s%%", OLLAMA_MODEL, RUN_INTERVAL, CPU_THROTTLE_PERCENT)
-    while not _shutdown.is_set():
+    while not evt.is_set():
         try:
             cpu = psutil.cpu_percent(interval=1)
             if cpu > CPU_THROTTLE_PERCENT:
@@ -110,7 +110,7 @@ def run_loop(shutdown_event: threading.Event = None):
                     log.info("Saved (%s): %s...", mem_id[:8], thought[:80])
         except Exception as e:
             log.error("Error: %s", e)
-        _shutdown.wait(RUN_INTERVAL)
+        evt.wait(RUN_INTERVAL)
     log.info("Stopped.")
 
 

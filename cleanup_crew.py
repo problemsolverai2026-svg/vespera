@@ -70,26 +70,28 @@ def run_cleanup():
             log.info("PRUNED  %s — %s", short_id, reason)
             pruned += 1
         else:
-            promote_memory(memory["id"], new_trust_score=0.5)
-            log.info("KEPT    %s → validated | %s...", short_id, memory["content"][:60])
+            # Use 0.5 as a floor only — never downgrade a memory that already has a
+            # higher trust score (e.g. one manually set to 0.8 by periodic_pruning).
+            existing_score = memory.get("trust_score") or 0.0
+            new_score = max(0.5, existing_score)
+            promote_memory(memory["id"], new_trust_score=new_score)
+            log.info("KEPT    %s → validated (trust=%.2f) | %s...", short_id, new_score, memory["content"][:60])
             kept += 1
     log.info("Done — kept: %d, pruned: %d", kept, pruned)
 
 
-_shutdown = threading.Event()
+_shutdown = threading.Event()  # fallback used when run_loop() is called without an event
 
 def run_loop(shutdown_event: threading.Event = None):
-    global _shutdown
-    if shutdown_event:
-        _shutdown = shutdown_event
+    evt = shutdown_event if shutdown_event is not None else _shutdown
     init_db()
     log.info("Started — model: %s — every %ss", OLLAMA_MODEL, CLEANUP_INTERVAL)
-    while not _shutdown.is_set():
+    while not evt.is_set():
         try:
             run_cleanup()
         except Exception as e:
             log.error("Error: %s", e)
-        _shutdown.wait(CLEANUP_INTERVAL)
+        evt.wait(CLEANUP_INTERVAL)
     log.info("Stopped.")
 
 

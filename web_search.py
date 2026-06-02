@@ -44,9 +44,13 @@ _PRICE_PATTERNS = {
     re.compile(r"\bbitcoin\b"):      "BTC-USD",
     re.compile(r"\bbtc\b"):          "BTC-USD",
     re.compile(r"\bethereum\b"):     "ETH-USD",
+    # \beth\b is kept but note: it can match 'meth'. The outer _is_price_query()
+    # requires a price keyword co-occurring, so casual mentions are filtered.
+    # Ambiguous drug-adjacent queries are an edge case with negligible real-world impact.
     re.compile(r"\beth\b"):          "ETH-USD",
     re.compile(r"\bcrude oil\b"):    "CL=F",
-    re.compile(r"\boil\b"):          "CL=F",
+    # Removed standalone \boil\b — too broad (coconut oil, essential oil, etc.).
+    # Rely on \bcrude oil\b for oil-price queries.
     re.compile(r"\bnatural gas\b"): "NG=F",
     re.compile(r"\bs&p 500\b"):      "^GSPC",
     re.compile(r"\bs&p\b"):          "^GSPC",

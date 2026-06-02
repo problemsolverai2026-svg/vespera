@@ -13,8 +13,10 @@ Handle locally if:
   - Local model has clear context from memory
 """
 
+import os
 import re
 import requests
+from pathlib import Path
 from config import COMPONENTS, COMPLEXITY_THRESHOLD
 from utils import get_logger, _sanitize
 from security import MAX_TOKENS as _MAX_TOKENS
@@ -171,6 +173,18 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
     Currently a placeholder — wire up your preferred cloud API here.
     Supported: claude, grok, venice
     """
+    # Re-read cloud config on every call so .env changes via the UI apply
+    # without requiring a full Vespera restart.
+    try:
+        from dotenv import load_dotenv as _ldenv
+        _ldenv(Path(__file__).parent / ".env", override=True)
+    except ImportError:
+        pass
+    CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", _cloud.get("provider", "groq"))
+    CLOUD_MODEL    = os.getenv("CLOUD_MODEL",    _cloud.get("model",    "llama3-8b-8192"))
+    CLOUD_API_KEY  = os.getenv("CLOUD_API_KEY",  "")
+    CLOUD_BASE_URL = os.getenv("CLOUD_BASE_URL", _cloud.get("base_url", ""))
+
     log.info("→ Cloud (%s / %s)", CLOUD_PROVIDER, CLOUD_MODEL)
 
     if not CLOUD_API_KEY:
@@ -246,6 +260,9 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                     for block in content_blocks:
                         if block.get("type") == "tool_use":
                             result = run_tool(block["name"], block.get("input", {}))
+                            # Cap tool result to avoid context overflow across multiple calls
+                            if len(result) > 8000:
+                                result = result[:8000] + "\n[tool output truncated]"
                             tool_results.append({
                                 "type": "tool_result",
                                 "tool_use_id": block["id"],
@@ -412,7 +429,11 @@ def handle_message(message: str) -> dict:
         if results:
             from datetime import datetime
             today = datetime.now().strftime("%A, %B %d, %Y")
-            formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results, message=message)
+            # Cap results to prevent context overflow in small local models (2K–4K tokens)
+            results_capped = results[:3000]
+            if len(results) > 3000:
+                results_capped += "\n[search results truncated]"
+            formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results_capped, message=message)
             response = call_local(formatted_prompt)
             if not response:
                 response = "I found search results but couldn't summarize them — local model unavailable."
