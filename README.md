@@ -2,7 +2,7 @@
 **A private, self-hosted AI assistant. Runs on your machine. Nobody else controls it.**
 
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/problemsolverai2026gmailcom)
-![Version](https://img.shields.io/badge/version-1.4.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 
 No subscription. No monthly fee. Just your own computer — and an optional API key if you want smarter responses.
 
@@ -20,8 +20,9 @@ It's local-first by design. Your data stays on your machine. Cloud AI is optiona
 
 ## What It Does
 
-- **Remembers your conversations** — even after restarts, across sessions
-- **Thinks in the background** — a local AI model runs quietly 24/7, building context over time
+- **Remembers your conversations** — facts you share are extracted and stored automatically, surviving restarts and sessions
+- **Thinks in the background** — a local AI model runs quietly 24/7, forming its own thoughts and follow-up questions based on what you've talked about
+- **Follows up when you return** — after a gap, Vespera picks up where you left off and asks about something you mentioned before
 - **Answers questions using web search** — no API key required (DuckDuckGo built in)
 - **Live financial prices** — silver, gold, bitcoin, stocks, oil and more via Yahoo Finance (no API key, always free)
 - **Hands off complex questions** to a cloud AI if you add a key
@@ -266,7 +267,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Windows is untested** — may work but not supported yet
 - **Requires Ollama** — no cloud-only mode without a local model
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
-- **UI is basic** — model selector, API key page, and memory visualization are included but may need polish
+- **UI is basic** — shipped but may need polish in places
 - **No automated tests** — unit tests not yet written, though the codebase underwent 15+ rounds of parallel AI security audit (60+ issues fixed) before release. Contributions welcome.
 - **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 
@@ -277,7 +278,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - [ ] Docker / docker-compose support
 - [ ] Windows compatibility
 - [ ] Discord and Signal bot support
-- [ ] UI: model selector, API key management, memory graph
+- [x] UI: model selector, API key management, memory visualization
 - [ ] Automated test suite
 - [ ] Long-run stability hardening
 - [ ] Multi-user support
