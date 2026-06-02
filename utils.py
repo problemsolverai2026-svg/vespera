@@ -30,8 +30,6 @@ _INJECTION_RE = re.compile(
 )
 
 
-_sanitize_log = get_logger("sanitize")
-
 def _sanitize(text: str, max_len: int) -> str:
     """Truncate, strip null bytes, and flag potential injection attempts."""
     # Strip null bytes first — they can corrupt SQLite text columns and
@@ -42,7 +40,8 @@ def _sanitize(text: str, max_len: int) -> str:
         # has known false positives on legitimate technical text (LLM docs, Git guides).
         # Return the cleaned text as-is so genuine messages aren't lost;
         # the log entry gives operators visibility without breaking user experience.
-        _sanitize_log.warning("Possible injection pattern detected (passed through): %.80r", cleaned)
+        import logging as _log
+        _log.getLogger("vespera.sanitize").warning("Possible injection pattern detected (passed through): %.80r", cleaned)
     return cleaned
 
 
