@@ -120,5 +120,7 @@ def get_status() -> dict:
         "max_tokens": MAX_TOKENS,
         "telegram_restricted": bool(live_users),
         "telegram_allowed_count": len(live_users),
-        "telegram_allowed_users": live_users,  # UI needs the actual list, not just the count
+        # Note: actual user IDs are intentionally omitted here.
+        # get_status() is safe to call from anywhere; actual IDs are
+        # only returned by the auth-gated /api/security route.
     }

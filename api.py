@@ -292,7 +292,18 @@ def list_conversations():
 def get_security():
     auth_err = require_auth()
     if auth_err: return auth_err
-    return jsonify({"ok": True, **security_status()})
+    status = security_status()
+    # Append the actual user ID list here — behind auth, never in get_status() directly.
+    # Re-read from env so the UI reflects saves without restart.
+    try:
+        from dotenv import load_dotenv as _ldenv
+        _ldenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+    except ImportError:
+        pass
+    status["telegram_allowed_users"] = [
+        u.strip() for u in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if u.strip()
+    ]
+    return jsonify({"ok": True, **status})
 
 
 @app.route("/api/chat", methods=["POST"])
