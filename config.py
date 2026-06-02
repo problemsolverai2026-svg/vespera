@@ -34,7 +34,7 @@ BASE_DIR = Path(__file__).parent
 COMPONENTS = {
 
     "background_loop": {
-        "description": "Persistent thinking engine. Runs 24/7 in the background, lightly reviewing past conversations and generating brief thoughts. Saves output to the 'recent' memory layer.",
+        "description": "Persistent memory engine. Runs 24/7 in the background, reviewing recent conversations and extracting durable facts about the user — names, preferences, habits, goals, projects, and relationships. Saves extracted facts to the 'recent' memory layer.",
         "role": "local",
         "ollama_url":   os.getenv("BACKGROUND_OLLAMA_URL",   "http://localhost:11434/api/chat"),
         "ollama_model": os.getenv("BACKGROUND_OLLAMA_MODEL", "llama3.2:3b"),
@@ -126,6 +126,6 @@ if not (0.0 <= _raw_threshold <= 1.0):
     print(f"[config] WARNING: COMPLEXITY_THRESHOLD={_raw_threshold} out of range (0.0–1.0) — clamping to 0.65")
     _raw_threshold = 0.65
 COMPLEXITY_THRESHOLD = _raw_threshold
-MAX_THOUGHT_LENGTH   = _int("MAX_THOUGHT_LENGTH",     300)
+MAX_THOUGHT_LENGTH   = _int("MAX_THOUGHT_LENGTH",     800)
 CLEANUP_BATCH_SIZE   = _int("CLEANUP_BATCH_SIZE",     5)
 PRUNING_BATCH_SIZE   = _int("PRUNING_BATCH_SIZE",     20)

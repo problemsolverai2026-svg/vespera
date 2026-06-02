@@ -18,13 +18,19 @@ OLLAMA_URL   = _cfg["ollama_url"]
 OLLAMA_MODEL = _cfg["ollama_model"]
 BATCH_SIZE   = CLEANUP_BATCH_SIZE
 
-CLEANUP_PROMPT = """You are reviewing a memory for a persistent AI system.
+CLEANUP_PROMPT = """You are reviewing a memory for a persistent AI memory system that stores facts about a user.
 
 Memory:
 {content}
 
-DELETE if: highly repetitive, incoherent, pure rambling, or contradicts known facts.
-KEEP if: coherent thought, useful technical insight, or meaningful reference.
+DELETE if: clearly incoherent, pure nonsense, empty, or a direct duplicate of another memory.
+KEEP if: any of the following are true:
+- A personal fact about the user (name, preference, habit, goal, relationship, opinion, job, location)
+- A project, decision, or commitment the user mentioned
+- A useful reference, insight, or recurring topic
+- Anything the user would reasonably expect to be remembered
+
+When in doubt, KEEP. It is better to keep a borderline memory than to lose a real user fact.
 
 Respond in JSON only:
 {{

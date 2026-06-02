@@ -438,23 +438,22 @@ def handle_message(message: str) -> dict:
         if not results:
             # All providers failed — don't silently fall through to stale local answers.
             return {"response": "I wasn't able to retrieve real-time information right now. Please try again in a moment.", "handled_by": "search-failed", "complexity": complexity}
-        if results:
-            from datetime import datetime
-            today = datetime.now().strftime("%A, %B %d, %Y")
-            # Cap results to prevent context overflow in small local models (2K–4K tokens)
-            results_capped = results[:3000]
-            if len(results) > 3000:
-                results_capped += "\n[search results truncated]"
-            formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results_capped, message=message)
-            # Route to cloud if the query is both real-time AND complex — local model
-            # was always used before even when complexity >= threshold.
-            if complexity >= COMPLEXITY_THRESHOLD and os.getenv("CLOUD_API_KEY", ""):
-                response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
-                return {"response": _trim(response), "handled_by": "search+cloud", "complexity": complexity}
-            response = call_local(formatted_prompt)
-            if not response:
-                response = "I found search results but couldn't summarize them — local model unavailable."
-            return {"response": _trim(response), "handled_by": "search+local", "complexity": complexity}
+        from datetime import datetime
+        today = datetime.now().strftime("%A, %B %d, %Y")
+        # Cap results to prevent context overflow in small local models (2K–4K tokens)
+        results_capped = results[:3000]
+        if len(results) > 3000:
+            results_capped += "\n[search results truncated]"
+        formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results_capped, message=message)
+        # Route to cloud if the query is both real-time AND complex — local model
+        # was always used before even when complexity >= threshold.
+        if complexity >= COMPLEXITY_THRESHOLD and os.getenv("CLOUD_API_KEY", ""):
+            response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
+            return {"response": _trim(response), "handled_by": "search+cloud", "complexity": complexity}
+        response = call_local(formatted_prompt)
+        if not response:
+            response = "I found search results but couldn't summarize them — local model unavailable."
+        return {"response": _trim(response), "handled_by": "search+local", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local
     # Re-read the key here too — the gate must match respond_cloud()'s live read

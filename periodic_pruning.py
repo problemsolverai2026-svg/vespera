@@ -19,7 +19,7 @@ OLLAMA_URL   = _cfg["ollama_url"]
 OLLAMA_MODEL = _cfg["ollama_model"]
 BATCH_SIZE   = PRUNING_BATCH_SIZE
 
-PRUNING_PROMPT = """You are performing a deep review of a persistent AI memory.
+PRUNING_PROMPT = """You are performing a deep review of a persistent AI memory about a user.
 
 Memory:
 {content}
@@ -31,6 +31,14 @@ Decide:
 - promote = genuinely valuable, worth keeping permanently in core
 - keep    = fine to hold, not ready for core yet
 - delete  = outdated, redundant, contradicts core, or not worth keeping
+
+IMPORTANT: Personal facts about the user are HIGH VALUE. This includes:
+- Names, relationships, and who they know
+- Preferences and favorites (food, music, hobbies, sports, shows)
+- Habits and routines
+- Goals, projects, and decisions
+- Job, location, and life context
+Do NOT delete a memory just because it is personal rather than technical. Personal facts are exactly what this system is designed to remember.
 
 Respond in JSON only:
 {{

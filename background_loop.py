@@ -7,6 +7,7 @@ Uses web search for technical gaps instead of calling the cloud model.
 """
 
 import os
+import re
 import time
 import threading
 import psutil
@@ -76,8 +77,9 @@ def think() -> str | None:
     if not raw:
         return None
 
-    if raw.startswith("SEARCH:"):
-        question = _sanitize(raw[7:].strip(), 300)
+    search_match = re.search(r'\bSEARCH:\s*(.+)', raw)
+    if search_match:
+        question = _sanitize(search_match.group(1).strip(), 300)
         if not question:
             log.debug("Empty SEARCH: query from model — skipping.")
             return None
