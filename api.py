@@ -19,10 +19,9 @@ Default port: 5055
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
-import json
 import threading
 from pathlib import Path
-from config import COMPONENTS, get_component, COMPLEXITY_THRESHOLD, PRUNING_INTERVAL_DAYS
+from config import COMPONENTS, COMPLEXITY_THRESHOLD, PRUNING_INTERVAL_DAYS
 from memory.store import (
     init_db, get_memories, get_recent_conversations,
     get_stats, add_conversation, backup_db,
@@ -354,7 +353,7 @@ def chat():
         if data.get("tts", False):
             try:
                 from tts import speak
-                tts_path = speak(response_text)
+                tts_path = speak(safe_response)  # use sanitized version
                 if tts_path:
                     tts_url = f"/api/audio/{os.path.basename(tts_path)}"
             except Exception:
@@ -566,12 +565,13 @@ def get_models():
 
 @app.route("/api/audio/<filename>")
 def serve_audio(filename):
-    """Serve a TTS audio file by name."""
-    auth_err = require_auth()
-    if auth_err: return auth_err
+    """Serve a TTS audio file by name.
+    No auth required — filenames are 32-64 hex chars (UUID-based, unguessable).
+    Adding auth here would break the webchat player which fetches audio without headers.
+    """
     from flask import send_from_directory
     import re
-    # Only allow safe filenames (hex + extension)
+    # Only allow safe filenames (hex + extension) — prevents path traversal
     if not re.match(r'^[a-f0-9]{32,64}\.(mp3|wav)$', filename):
         return jsonify({"ok": False, "error": "Invalid filename"}), 400
     from pathlib import Path as _Path

@@ -77,6 +77,7 @@ def init_scheduler_db():
 # ─────────────────────────────────────────────
 
 def add_reminder(message: str, fire_at: datetime, recur: str = None, recur_rule: str = None) -> str:
+    # recur_rule: reserved for future cron-style expressions; currently unused.
     rid = str(uuid.uuid4())
     # Always normalize to UTC so string comparisons in get_due_reminders() are correct
     if fire_at.tzinfo is not None:

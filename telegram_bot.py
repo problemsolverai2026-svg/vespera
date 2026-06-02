@@ -76,13 +76,19 @@ log = logging.getLogger(__name__)
 
 
 def is_allowed(user_id: int) -> bool:
-    # Delegate to the canonical security module so any future changes there
-    # automatically apply here. Warning stays local for user-facing feedback.
-    from security import telegram_user_allowed as _sec_allowed
-    if not ALLOWED_USERS:
+    # Re-read from env on every call so UI updates to TELEGRAM_ALLOWED_USERS
+    # take effect without restarting the bot process. ALLOWED_USERS is frozen
+    # at import time and cannot be used for the live check.
+    try:
+        from dotenv import load_dotenv as _ldenv
+        _ldenv(Path(__file__).parent / ".env", override=True)
+    except ImportError:
+        pass
+    live_users = [u.strip() for u in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if u.strip()]
+    if not live_users:
         log.warning("TELEGRAM_ALLOWED_USERS not set — all users blocked. Add your ID to .env to use the bot.")
         return False
-    return _sec_allowed(user_id)
+    return str(user_id) in live_users
 
 
 def chat(message: str) -> dict:

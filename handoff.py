@@ -468,7 +468,8 @@ def handle_message(message: str) -> dict:
     if needs_handoff:
         response = respond_cloud(message, memories, recent)
         return {"response": _trim(response), "handled_by": "cloud", "complexity": complexity}
-
+    if not response:
+        response = "I'm having trouble responding right now. Please check that Ollama is running."
     return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
 
 

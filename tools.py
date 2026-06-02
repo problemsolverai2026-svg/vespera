@@ -10,9 +10,9 @@ Tools available:
 
 Security:
   - VESPERA_ALLOW_SHELL=true required to enable shell (off by default)
-  - ALLOW_PATHS restricts the *working directory* of shell commands only.
-    File paths referenced inside the command itself are NOT path-checked.
-    Treat ALLOW_SHELL=true as granting full user-level filesystem access.
+  - ALLOW_PATHS restricts both the working directory AND all path arguments
+    in shell commands (absolute, home-relative, and `..` traversal are all blocked).
+  - The binary path (argv[0]) is also path-checked.
   - read_file and write_file ARE path-checked via path_allowed().
 """
 
@@ -120,10 +120,10 @@ def run_shell(command: str, workdir: str = None) -> str:
     # Since shell=False is used there is no shell expansion, so direct path
     # arguments like `cat /etc/passwd` or `ls ~/secret` are caught here.
     # Option-style args (e.g. --output=/etc/foo) are also checked.
-    for arg in args[1:]:  # skip argv[0] (the binary itself)
-        val = arg.split("=", 1)[-1] if "=" in arg else arg
-        # Block absolute paths, home-relative paths, and any argument containing
-        # `..` (catches foo/../../../etc/shadow where split("/")[0] == "foo", no dot).
+    # Check all args including argv[0] (the binary itself) — /etc/evil_binary
+    # would otherwise bypass the path check entirely.
+    for i, arg in enumerate(args):
+        val = arg.split("=", 1)[-1] if (i > 0 and "=" in arg) else arg
         if ".." in val or val.startswith("/") or val.startswith("~"):
             resolved_arg = str(Path(HOME).joinpath(val.replace("~", HOME, 1)).resolve())
             if not _path_allowed(resolved_arg):

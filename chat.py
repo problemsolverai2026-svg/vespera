@@ -11,7 +11,7 @@ Usage:
 
 from memory.store import init_db, add_conversation, get_stats
 from handoff import handle_message
-from utils import get_logger
+from utils import get_logger, _sanitize
 
 log = get_logger("chat")
 
@@ -74,19 +74,24 @@ def main():
             print("\033[H\033[J", end="")
             continue
 
-        # Log user message
-        add_conversation(role="user", content=user_input)
+        # Sanitize before storing — same as the API endpoint does
+        safe_input = _sanitize(user_input, 8000)
+        if not safe_input:
+            print("[Message contained only invalid characters — skipped]")
+            continue
+        add_conversation(role="user", content=safe_input)
 
         # Get response
         try:
-            result = handle_message(user_input)
-            response = result.get("response", "")
+            result = handle_message(safe_input)
+            response = result.get("response", "") or "(no response)"
             handled   = result.get("handled_by", "")
             complexity = result.get("complexity", 0.0)
             tag = f"[local {complexity:.0%}]" if handled == "local" else f"[cloud {complexity:.0%}]"
             print(f"\nVespera {tag}: {response}\n")
-            # Log assistant response
-            add_conversation(role="assistant", content=response)
+            # Sanitize response before storing to conversation history
+            safe_response = _sanitize(response, len(response))
+            add_conversation(role="assistant", content=safe_response)
         except Exception as e:
             print(f"\n[Error: {e} — try again]\n")
             log.error("CLI handle_message error: %s", e)

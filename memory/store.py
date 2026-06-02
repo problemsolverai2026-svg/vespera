@@ -261,7 +261,17 @@ def get_memories(
     with _connect() as conn:
         rows = conn.execute(query, params).fetchall()
 
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        # tags stored as JSON string — deserialize so callers always get a list
+        if isinstance(d.get("tags"), str):
+            try:
+                d["tags"] = json.loads(d["tags"])
+            except (json.JSONDecodeError, TypeError):
+                d["tags"] = []
+        result.append(d)
+    return result
 
 
 def get_linked_memories(memory_id: str) -> list[dict]:
