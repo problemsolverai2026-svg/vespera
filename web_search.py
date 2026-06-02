@@ -111,7 +111,11 @@ def _fetch_price(ticker: str) -> str | None:
 
 def _search_duckduckgo(query: str) -> list[dict]:
     try:
-        from duckduckgo_search import DDGS
+        # Package was renamed from duckduckgo_search to ddgs — try new name first.
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS  # legacy fallback
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=MAX_RESULTS))
         return [{"title": r.get("title",""), "snippet": r.get("body",""), "url": r.get("href","")} for r in results]

@@ -83,6 +83,10 @@ def print_status():
 def handle_shutdown(sig, frame):
     log.info("Shutting down gracefully...")
     _shutdown.set()
+    # Re-register default SIGTERM so a second signal kills immediately
+    # instead of being ignored if the handler is still on the stack.
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGINT,  signal.SIG_DFL)
 
 
 # ─────────────────────────────────────────────
@@ -196,6 +200,9 @@ def main():
             pass
 
     log.info("Goodbye.")
+    # Explicit exit — ensures the process terminates even if a non-daemon
+    # thread is still alive (e.g. blocked in a requests call or scheduler).
+    sys.exit(0)
 
 
 if __name__ == "__main__":

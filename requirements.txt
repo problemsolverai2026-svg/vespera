@@ -10,7 +10,8 @@ gunicorn>=21.0.0,<24.0      # production WSGI server — replaces Werkzeug dev s
 python-telegram-bot>=21.0,<23.0
 
 # Web search (DuckDuckGo — no key needed)
-duckduckgo-search>=6.0,<9.0
+# Package was renamed from duckduckgo-search to ddgs in 2025.
+ddgs>=1.0,<3.0
 
 # TTS — layered, use what you have
 edge-tts>=6.0,<8.0          # free, Microsoft servers

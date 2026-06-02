@@ -266,7 +266,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Windows is untested** — may work but not supported yet
 - **Requires Ollama** — no cloud-only mode without a local model
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
-- **UI is basic** — model selector, API key page, and memory visualization are planned but not built
+- **UI is basic** — model selector, API key page, and memory visualization are included but may need polish
 - **No automated tests** — unit tests not yet written, though the codebase underwent 15+ rounds of parallel AI security audit (60+ issues fixed) before release. Contributions welcome.
 - **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 

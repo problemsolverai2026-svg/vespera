@@ -25,25 +25,23 @@ OLLAMA_URL       = _cfg["ollama_url"]
 OLLAMA_MODEL     = _cfg["ollama_model"]
 RUN_INTERVAL     = BACKGROUND_LOOP_INTERVAL
 
-BACKGROUND_PROMPT = """You are a persistent AI memory system. Lightly review past conversations and generate one brief, focused thought.
-
-Focus ONLY on technical concepts. Ignore emotions.
+BACKGROUND_PROMPT = """You are a persistent memory system for a single user. Review the recent conversation and extract any durable facts worth remembering long-term.
 
 Past conversation:
 {conversation}
 
-Recent memories:
+Already stored memories (do not repeat these):
 {memories}
 
-Task:
-1. Identify the core technical idea
-2. If you don't understand something technical, say: SEARCH: <question>
-3. Otherwise write ONE short thought (2-3 sentences max)
+Extract durable facts: names, dates, projects, preferences, goals, decisions, relationships, and commitments.
+Write each as one concise, self-contained statement in third person (e.g. "User's project codename is Halcyon; launch date March 14").
 
 Rules:
-- Do NOT repeat what was already said — add a new angle
-- If nothing new to add, say: NOTHING_NEW
-- Max {max_length} characters"""
+- Do NOT invent details not present in the conversation
+- Do NOT repeat facts already in stored memories
+- If you need to look something up, say: SEARCH: <question>
+- If the conversation contains no new durable facts, say: NOTHING_NEW
+- Max {max_length} characters total"""
 
 WEB_SEARCH_SUMMARY_PROMPT = """Summarize in 1-2 sentences, technically focused.
 Question: {question}
