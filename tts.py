@@ -104,6 +104,7 @@ def _tts_edge(text: str) -> str | None:
 _kokoro_ready    = threading.Event()
 _kokoro_lock     = threading.Lock()
 _kokoro_instance = None
+_pyttsx3_lock    = threading.Lock()  # pyttsx3 is not thread-safe on macOS (CoreAudio)
 
 
 def _get_kokoro():
@@ -179,17 +180,18 @@ def _tts_kokoro(text: str) -> str | None:
 
 
 def _tts_pyttsx3(text: str) -> str | None:
-    try:
-        import pyttsx3
-        engine = pyttsx3.init()
-        out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
-        engine.save_to_file(text, str(out))
-        engine.runAndWait()
-        log.debug("pyttsx3 → %s", out.name)
-        return str(out)
-    except Exception as e:
-        log.error("pyttsx3 error: %s", e)
-        return None
+    with _pyttsx3_lock:  # pyttsx3 / CoreAudio is not thread-safe
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            out = TTS_DIR / f"{uuid.uuid4().hex}.wav"
+            engine.save_to_file(text, str(out))
+            engine.runAndWait()
+            log.debug("pyttsx3 → %s", out.name)
+            return str(out)
+        except Exception as e:
+            log.error("pyttsx3 error: %s", e)
+            return None
 
 
 # ─────────────────────────────────────────────

@@ -269,7 +269,7 @@ def list_memories():
     except (ValueError, TypeError):
         limit = 20
     memories = get_memories(layer=layer, limit=limit)
-    return jsonify(memories)
+    return jsonify({"ok": True, "memories": memories})
 
 
 @app.route("/api/conversations")
@@ -281,7 +281,7 @@ def list_conversations():
     except (ValueError, TypeError):
         limit = 20
     convs = get_recent_conversations(limit=limit)
-    return jsonify(convs)
+    return jsonify({"ok": True, "conversations": convs})
 
 
 # ─────────────────────────────────────────────
@@ -338,9 +338,13 @@ def chat():
             complexity_score = float(result.get("complexity", 0.0))
         except (TypeError, ValueError):
             complexity_score = 0.0
+        # Sanitize model output before storing — prevents injection-pattern
+        # responses from re-entering future prompts via conversation history.
+        from utils import _sanitize as _san
+        safe_response = _san(response_text, len(response_text)) if response_text else ""
         add_conversation(
             role="assistant",
-            content=response_text,
+            content=safe_response,
             used_cloud=(handled_by == "cloud"),
             complexity=complexity_score,
         )
@@ -642,17 +646,19 @@ def run_cleanup():
         return jsonify({"ok": False, "error": "Cleanup already running"}), 409
 
     def _run_and_release():
-        import concurrent.futures
         try:
             from cleanup_crew import run_cleanup as _run
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                ex.submit(_run).result(timeout=300)
-        except concurrent.futures.TimeoutError:
-            app.logger.error("Manual cleanup timed out after 300s")
+            # Run in a child daemon thread so join(timeout=) gives us a deadline
+            # without blocking lock release if the worker hangs.
+            worker = threading.Thread(target=_run, daemon=True, name="manual-cleanup-worker")
+            worker.start()
+            worker.join(timeout=300)
+            if worker.is_alive():
+                app.logger.error("Manual cleanup timed out after 300s — worker abandoned")
         except Exception:
             app.logger.exception("Manual cleanup failed")
         finally:
-            _cleanup_lock.release()
+            _cleanup_lock.release()  # always releases — even on timeout
 
     threading.Thread(target=_run_and_release, daemon=True, name="manual-cleanup").start()
     return jsonify({"ok": True, "status": "started"}), 202
@@ -668,17 +674,17 @@ def run_pruning():
         return jsonify({"ok": False, "error": "Pruning already running"}), 409
 
     def _run_and_release():
-        import concurrent.futures
         try:
             from periodic_pruning import run_pruning as _run
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                ex.submit(_run).result(timeout=300)
-        except concurrent.futures.TimeoutError:
-            app.logger.error("Manual pruning timed out after 300s")
+            worker = threading.Thread(target=_run, daemon=True, name="manual-prune-worker")
+            worker.start()
+            worker.join(timeout=300)
+            if worker.is_alive():
+                app.logger.error("Manual pruning timed out after 300s — worker abandoned")
         except Exception:
             app.logger.exception("Manual pruning failed")
         finally:
-            _pruning_lock.release()
+            _pruning_lock.release()  # always releases — even on timeout
 
     threading.Thread(target=_run_and_release, daemon=True, name="manual-prune").start()
     return jsonify({"ok": True, "status": "started"}), 202

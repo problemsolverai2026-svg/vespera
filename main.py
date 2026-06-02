@@ -185,9 +185,12 @@ def main():
         _shutdown.set()
         for t in threads:
             t.join(timeout=5)
-        # Release lock and clean up
+        # Release lock and clean up — guard against early SIGINT before
+        # _lockfd is assigned (would raise AttributeError swallowed silently,
+        # leaving a stale lock file).
         try:
-            _lockfd.close()
+            if _lockfd is not None:
+                _lockfd.close()
             lock_file.unlink(missing_ok=True)
         except Exception:
             pass

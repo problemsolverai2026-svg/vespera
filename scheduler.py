@@ -259,12 +259,15 @@ def fire_reminder(reminder: dict):
     try:
         reschedule_or_complete(reminder)
     except Exception as e:
-        log.error("reschedule_or_complete failed for %s — resetting claim: %s", reminder["id"], e)
+        # On failure, deactivate rather than resetting claimed_at — resetting
+        # claimed_at would cause the reminder to re-fire on the next tick,
+        # potentially looping forever if the DB is in a bad state.
+        log.error("reschedule_or_complete failed for %s — deactivating to prevent re-fire: %s", reminder["id"], e)
         try:
             with _sched_connect() as conn:
-                conn.execute("UPDATE reminders SET claimed_at=NULL WHERE id=?", (reminder["id"],))
-        except Exception as reset_err:
-            log.error("Could not reset claimed_at for %s: %s", reminder["id"], reset_err)
+                conn.execute("UPDATE reminders SET active=0 WHERE id=?", (reminder["id"],))
+        except Exception as deactivate_err:
+            log.error("Could not deactivate reminder %s: %s", reminder["id"], deactivate_err)
 
 
 def _safe_callback(fn, reminder: dict, audio):
@@ -284,24 +287,21 @@ def register_callback(fn):
 # BACKGROUND LOOP
 # ─────────────────────────────────────────────
 
-_shutdown = threading.Event()
+_shutdown = threading.Event()  # fallback when run() is called without an event
 
 def run(shutdown_event: threading.Event = None):
-    global _shutdown
-    if shutdown_event:
-        _shutdown = shutdown_event
-
+    evt = shutdown_event if shutdown_event is not None else _shutdown
     init_scheduler_db()
     log.info("Started — checking every 30 seconds.")
 
-    while not _shutdown.is_set():
+    while not evt.is_set():
         try:
             due = get_due_reminders()
             for r in due:
                 fire_reminder(r)
         except Exception as e:
             log.error("Error: %s", e)
-        _shutdown.wait(30)
+        evt.wait(30)
 
     log.info("Stopped.")
 

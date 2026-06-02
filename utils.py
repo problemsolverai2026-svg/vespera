@@ -30,13 +30,19 @@ _INJECTION_RE = re.compile(
 )
 
 
+_sanitize_log = get_logger("sanitize")
+
 def _sanitize(text: str, max_len: int) -> str:
-    """Truncate, strip null bytes, and strip potential injection attempts."""
+    """Truncate, strip null bytes, and flag potential injection attempts."""
     # Strip null bytes first — they can corrupt SQLite text columns and
     # bypass injection pattern matching by splitting keywords across bytes.
     cleaned = text.replace("\x00", "")[:max_len]
     if _INJECTION_RE.search(cleaned):
-        return "[content removed — possible injection attempt]"
+        # Log the detection but DO NOT silently replace the content — the regex
+        # has known false positives on legitimate technical text (LLM docs, Git guides).
+        # Return the cleaned text as-is so genuine messages aren't lost;
+        # the log entry gives operators visibility without breaking user experience.
+        _sanitize_log.warning("Possible injection pattern detected (passed through): %.80r", cleaned)
     return cleaned
 
 

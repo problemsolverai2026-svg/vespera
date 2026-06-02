@@ -440,8 +440,10 @@ def handle_message(message: str) -> dict:
             return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "search+local", "complexity": complexity}
 
     # Complex reasoning — cloud if available, else local
+    # Re-read the key here too — the gate must match respond_cloud()'s live read
+    # so a key added via the UI after startup actually enables cloud routing.
     if complexity >= COMPLEXITY_THRESHOLD:
-        if CLOUD_API_KEY:
+        if os.getenv("CLOUD_API_KEY", ""):
             response = respond_cloud(message, memories, recent)
             return {"response": response[:MAX_RESPONSE_LENGTH], "handled_by": "cloud", "complexity": complexity}
         # No cloud key — try local

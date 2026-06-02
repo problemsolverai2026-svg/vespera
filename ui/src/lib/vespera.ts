@@ -81,7 +81,7 @@ export const vespera = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
-  memories: (layer: string) => req<MemoryItem[]>(`/api/memories?layer=${encodeURIComponent(layer)}`),
+  memories: (layer: string) => req<{ ok: boolean; memories: MemoryItem[] }>(`/api/memories?layer=${encodeURIComponent(layer)}`).then(r => r.memories),
   status: () => req<StatusResponse>("/api/status"),
   components: () => req<ComponentInfo[]>("/api/components"),
   updateComponent: (name: string, body: Partial<ComponentInfo>) =>
@@ -92,7 +92,7 @@ export const vespera = {
   cleanup: () => req<{ ok: boolean }>("/api/cleanup", { method: "POST" }),
   prune: () => req<{ ok: boolean }>("/api/prune", { method: "POST" }),
   models: () => req<OllamaModel[]>("/api/models"),
-  conversations: (limit = 50) => req<ConversationItem[]>(`/api/conversations?limit=${limit}`),
+  conversations: (limit = 50) => req<{ ok: boolean; conversations: ConversationItem[] }>(`/api/conversations?limit=${limit}`).then(r => r.conversations),
   security: () => req<SecuritySettings>("/api/security"),
   saveTelegramUsers: (ids: string[]) =>
     req<{ ok: boolean }>("/api/settings", {

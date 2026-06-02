@@ -14,6 +14,7 @@ Memories can be linked to each other — related, expands, contradicts, referenc
 
 import sqlite3
 import json
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -28,6 +29,8 @@ SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 LAYERS = ["working", "recent", "validated", "core"]
 LAYER_ORDER = {layer: i for i, layer in enumerate(LAYERS)}
+
+_init_lock = threading.Lock()  # prevents concurrent init_db() calls on first boot
 
 
 def _now() -> str:
@@ -60,10 +63,11 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 
 def init_db():
-    """Initialize the database from schema."""
-    schema = SCHEMA_PATH.read_text()
-    with _connect() as conn:
-        conn.executescript(schema)
+    """Initialize the database from schema. Thread-safe — safe to call concurrently."""
+    with _init_lock:
+        schema = SCHEMA_PATH.read_text()
+        with _connect() as conn:
+            conn.executescript(schema)
     # Run migrations in a separate connection — executescript() issues an implicit
     # COMMIT so schema + ALTER can't share a single atomic transaction anyway.
     # Use PRAGMA table_info to check column existence rather than swallowing
@@ -320,6 +324,13 @@ def get_stats() -> dict:
         stats["total_conversations"] = conn.execute(
             "SELECT COUNT(*) FROM conversations"
         ).fetchone()[0]
+
+        # Warn when tables are growing large — no auto-cleanup exists yet
+        stats["warnings"] = []
+        if stats["total_conversations"] > 10_000:
+            stats["warnings"].append(f"conversations table has {stats['total_conversations']:,} rows — consider pruning old entries")
+        if stats["total_pruned"] > 50_000:
+            stats["warnings"].append(f"prune_log has {stats['total_pruned']:,} entries — consider archiving")
 
     return stats
 
