@@ -364,8 +364,9 @@ def get_stats() -> dict:
         stats["warnings"] = []
         if stats["total_conversations"] > 10_000:
             stats["warnings"].append(f"conversations table has {stats['total_conversations']:,} rows — consider pruning old entries")
-        if stats["total_pruned"] > 50_000:
-            stats["warnings"].append(f"prune_log has {stats['total_pruned']:,} entries — consider archiving")
+        prune_log_count = conn.execute("SELECT COUNT(*) FROM prune_log").fetchone()[0]
+        if prune_log_count > 50_000:
+            stats["warnings"].append(f"prune_log has {prune_log_count:,} entries — consider archiving")
 
     return stats
 

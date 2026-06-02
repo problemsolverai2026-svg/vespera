@@ -24,6 +24,8 @@ from utils import get_logger
 # Module-level pool for edge-tts async dispatch — avoids spawning a new
 # ThreadPoolExecutor per concurrent speak() call.
 _edge_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="edge-tts")
+import atexit as _atexit
+_atexit.register(_edge_pool.shutdown, wait=False)
 
 log = get_logger("tts")
 

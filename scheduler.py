@@ -108,21 +108,34 @@ def cancel_reminder(rid: str) -> bool:
     return affected > 0
 
 
+# Stale claim timeout — if a process crashes between claiming and firing,
+# the claim is recovered after this many seconds so the reminder isn't lost.
+_CLAIM_TIMEOUT_SECONDS = 300  # 5 minutes
+
 def get_due_reminders() -> list[dict]:
-    """Return due reminders, atomically claiming each so only one process fires it."""
-    now = datetime.now(timezone.utc).isoformat()
+    """Return due reminders, atomically claiming each so only one process fires it.
+    Also recovers stale claims from crashed processes.
+    """
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    stale_cutoff = (now - relativedelta(seconds=_CLAIM_TIMEOUT_SECONDS)).isoformat()
     with _sched_connect() as conn:
+        # Reset stale claims (process crashed between claim and fire)
+        conn.execute(
+            "UPDATE reminders SET claimed_at=NULL WHERE active=1 AND claimed_at IS NOT NULL AND claimed_at <= ?",
+            (stale_cutoff,)
+        )
         rows = conn.execute(
             "SELECT * FROM reminders WHERE active=1 AND fire_at <= ? AND claimed_at IS NULL",
-            (now,)
+            (now_iso,)
         ).fetchall()
         claimed = []
         for row in rows:
             cur = conn.execute(
                 "UPDATE reminders SET claimed_at=? WHERE id=? AND claimed_at IS NULL",
-                (now, row["id"])
+                (now_iso, row["id"])
             )
-            if cur.rowcount > 0:  # this process won the claim
+            if cur.rowcount > 0:
                 claimed.append(dict(row))
     return claimed
 
@@ -137,19 +150,20 @@ def reschedule_or_complete(reminder: dict):
     fire_at = datetime.fromisoformat(reminder["fire_at"])
     if fire_at.tzinfo is None:
         fire_at = fire_at.replace(tzinfo=timezone.utc)
-    # Clamp to now before adding the delta — if the system was offline for days,
-    # old anchored timestamps cause a notification storm as every missed interval
-    # fires back-to-back until the math catches up to the present.
-    fire_at = max(fire_at, datetime.now(timezone.utc))
-    if recur == "daily":
-        next_fire = fire_at + relativedelta(days=1)
-    elif recur == "weekly":
-        next_fire = fire_at + relativedelta(weeks=1)
-    elif recur == "hourly":
-        next_fire = fire_at + relativedelta(hours=1)
-    else:
+
+    _DELTAS = {"daily": relativedelta(days=1), "weekly": relativedelta(weeks=1), "hourly": relativedelta(hours=1)}
+    if recur not in _DELTAS:
         cancel_reminder(reminder["id"])
         return
+
+    # Advance from the original anchor in fixed steps until past now.
+    # This preserves time-of-day (a daily 8am reminder stays at 8am) while
+    # still skipping missed intervals after downtime — never fires more than once.
+    delta = _DELTAS[recur]
+    now   = datetime.now(timezone.utc)
+    next_fire = fire_at
+    while next_fire <= now:
+        next_fire += delta
 
     next_utc = next_fire.astimezone(timezone.utc)
     with _sched_connect() as conn:
@@ -291,6 +305,8 @@ def register_callback(fn):
 _shutdown = threading.Event()  # fallback when run() is called without an event
 # Bounded pool for reminder callbacks — prevents unbounded thread spawn under burst
 _callback_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="reminder-cb")
+import atexit as _atexit
+_atexit.register(_callback_pool.shutdown, wait=False)
 
 def run(shutdown_event: threading.Event = None):
     evt = shutdown_event if shutdown_event is not None else _shutdown

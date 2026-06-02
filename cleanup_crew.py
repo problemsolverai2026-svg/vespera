@@ -53,7 +53,9 @@ def review_memory(memory: dict) -> tuple[str, str]:
 
 
 def run_cleanup():
-    memories = get_memories(layer="recent", limit=BATCH_SIZE)
+    # Process oldest-reviewed first — consistent with periodic_pruning's anti-starvation fix.
+    # Under a burst of background-loop output, newest entries would otherwise eclipse older ones.
+    memories = get_memories(layer="recent", limit=BATCH_SIZE, order_by="created_at ASC")
     if not memories:
         log.debug("Nothing to review.")
         return

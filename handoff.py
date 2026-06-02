@@ -281,7 +281,8 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
                                 return block["text"]
                         return "[Error: unexpected stop — tool_use signaled but no tool blocks found]"
                     messages.append({"role": "user", "content": tool_results})
-                    import time as _t; _t.sleep(0.5)  # brief backoff to avoid rate limits
+                    import time as _t
+                    _t.sleep(min(0.5 * (2 ** min(_, 4)), 10))  # exponential backoff capped at 10s
                     continue
 
                 # Unknown stop reason — return whatever text is present, else descriptive error
@@ -432,6 +433,9 @@ def handle_message(message: str) -> dict:
     # Web search first for real-time questions — always synthesize with cloud
     if needs_search:
         results = web_search(message)
+        if not results:
+            # All providers failed — don't silently fall through to stale local answers.
+            return {"response": "I wasn't able to retrieve real-time information right now. Please try again in a moment.", "handled_by": "search-failed", "complexity": complexity}
         if results:
             from datetime import datetime
             today = datetime.now().strftime("%A, %B %d, %Y")

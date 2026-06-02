@@ -120,14 +120,23 @@ def run_shell(command: str, workdir: str = None) -> str:
     # Since shell=False is used there is no shell expansion, so direct path
     # arguments like `cat /etc/passwd` or `ls ~/secret` are caught here.
     # Option-style args (e.g. --output=/etc/foo) are also checked.
-    # Check all args including argv[0] (the binary itself) — /etc/evil_binary
-    # would otherwise bypass the path check entirely.
+    # Determine the effective working directory now (before the workdir block below)
+    # so we can resolve relative arguments correctly.
+    effective_cwd = ALLOW_PATHS[0] if ALLOW_PATHS else HOME
+
+    # Check ALL arguments — absolute, home-relative, dotdot, AND plain relative.
+    # Plain relative paths like `cat .ssh/id_rsa` resolve against cwd and can
+    # escape the sandbox if cwd is HOME and ALLOW_PATHS is a subdirectory.
     for i, arg in enumerate(args):
         val = arg.split("=", 1)[-1] if (i > 0 and "=" in arg) else arg
-        if ".." in val or val.startswith("/") or val.startswith("~"):
-            resolved_arg = str(Path(HOME).joinpath(val.replace("~", HOME, 1)).resolve())
-            if not _path_allowed(resolved_arg):
-                return f"Error: path not in allowed paths: {val}"
+        if i > 0 and val.startswith("-"):
+            continue  # skip option flags like -v, --output
+        candidate = Path(val.replace("~", HOME, 1))
+        if not candidate.is_absolute():
+            candidate = Path(effective_cwd) / candidate
+        resolved_arg = str(candidate.resolve())
+        if not _path_allowed(resolved_arg):
+            return f"Error: path not in allowed paths: {val}"
 
     cwd = HOME
     if workdir:

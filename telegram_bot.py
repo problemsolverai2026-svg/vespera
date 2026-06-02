@@ -118,7 +118,14 @@ def send_reminder(reminder: dict, audio_path: str = None):
     async def _send():
         bot = Bot(token=BOT_TOKEN)
         # Use same list as is_allowed() — single source of truth
-        targets = [u.strip() for u in ALLOWED_USERS.split(",") if u.strip()] if ALLOWED_USERS else []
+        # Re-read from env — ALLOWED_USERS is frozen at import time; live updates
+        # from the UI must be picked up here the same as in is_allowed().
+        try:
+            from dotenv import load_dotenv as _ldenv
+            _ldenv(Path(__file__).parent / ".env", override=True)
+        except ImportError:
+            pass
+        targets = [u.strip() for u in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if u.strip()]
         for uid in targets:
             try:
                 await bot.send_message(chat_id=int(uid), text=f"🔔 Reminder: {reminder['message']}")

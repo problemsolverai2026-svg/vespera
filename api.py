@@ -148,11 +148,16 @@ def status():
     auth_err = require_auth()
     if auth_err: return auth_err
     stats = get_stats()
+    # Read live from env so /api/status and /api/settings report the same value
+    try:
+        _ct = float(os.getenv("COMPLEXITY_THRESHOLD", str(COMPLEXITY_THRESHOLD)))
+    except (ValueError, TypeError):
+        _ct = COMPLEXITY_THRESHOLD
     return jsonify({
         "ok": True,
         "memory": stats,
         "settings": {
-            "complexity_threshold": COMPLEXITY_THRESHOLD,
+            "complexity_threshold": _ct,
             "pruning_interval_days": PRUNING_INTERVAL_DAYS,
         }
     })
@@ -177,7 +182,7 @@ def list_components():
             "provider": cfg.get("provider", "ollama"),
             "has_api_key": bool(cfg.get("api_key", "")),
         }
-    return jsonify(safe)
+    return jsonify({"ok": True, "components": safe})
 
 
 @app.route("/api/components/<name>", methods=["POST"])
@@ -344,7 +349,7 @@ def chat():
         add_conversation(
             role="assistant",
             content=safe_response,
-            used_cloud=(handled_by == "cloud"),
+            used_cloud=("cloud" in handled_by),  # covers "cloud" and "search+cloud"
             complexity=complexity_score,
         )
 
@@ -543,20 +548,21 @@ def get_models():
         if result.returncode != 0:
             app.logger.error("ollama list failed (rc=%d): %s", result.returncode, result.stderr.strip())
             return jsonify({"ok": False, "error": "Model list unavailable"}), 503
+        import re as _re
         lines = result.stdout.strip().split("\n")[1:]  # skip header
         models = []
         for line in lines:
-            parts = line.split()
-            if not parts:
+            if not line.strip():
                 continue
-            try:
-                name = parts[0]
-                # Ollama list format: NAME  ID  SIZE  MODIFIED
-                # Size is usually like "4.7 GB" (2 tokens) but format can vary
-                size = " ".join(parts[2:4]) if len(parts) >= 4 else (parts[2] if len(parts) >= 3 else "")
-                models.append({"name": name, "size": size})
-            except Exception:
-                continue
+            # Ollama list: NAME  ID  SIZE  MODIFIED
+            # SIZE format varies: "3.2 GB" or "3.2GB" — use regex to capture robustly
+            m = _re.match(r'^(\S+)\s+\S+\s+(\S+(?:\s+[KMGT]B)?)\s+', line, _re.IGNORECASE)
+            if m:
+                models.append({"name": m.group(1), "size": m.group(2).strip()})
+            else:
+                parts = line.split()
+                if parts:
+                    models.append({"name": parts[0], "size": ""})
         return jsonify({"ok": True, "models": models})
     except Exception as e:
         app.logger.error("get_models failed: %s", e)
