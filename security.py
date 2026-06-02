@@ -102,12 +102,23 @@ def check_api_token(request_token: str) -> bool:
 
 
 def get_status() -> dict:
-    """Return current security config (safe to display in UI — no secrets)."""
+    """Return current security config (safe to display in UI — no secrets).
+    Re-reads TELEGRAM_ALLOWED_USERS from env on each call so the UI reflects
+    saves made via /api/settings without requiring a restart.
+    """
+    # Re-read from env so UI shows current value after a save
+    try:
+        from dotenv import load_dotenv as _ldenv
+        _ldenv(Path(__file__).parent / ".env", override=True)
+    except ImportError:
+        pass
+    live_users = [u.strip() for u in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if u.strip()]
     return {
         "shell_execution": ALLOW_SHELL,
         "allowed_paths": ALLOW_PATHS,
         "api_token_required": bool(API_TOKEN),
         "max_tokens": MAX_TOKENS,
-        "telegram_restricted": bool(ALLOWED_TELEGRAM_USERS),
-        "telegram_allowed_count": len(ALLOWED_TELEGRAM_USERS),
+        "telegram_restricted": bool(live_users),
+        "telegram_allowed_count": len(live_users),
+        "telegram_allowed_users": live_users,  # UI needs the actual list, not just the count
     }

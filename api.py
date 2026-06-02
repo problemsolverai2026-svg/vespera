@@ -416,10 +416,13 @@ def get_settings():
     for s in _SETTINGS_SCHEMA:
         raw = os.getenv(s["key"])
         if raw is not None:
-            try:
-                value = float(raw) if s["type"] == "float" else int(raw)
-            except ValueError:
-                value = s["default"]
+            if s["type"] == "string":
+                value = raw  # return as-is — no numeric cast
+            else:
+                try:
+                    value = float(raw) if s["type"] == "float" else int(raw)
+                except ValueError:
+                    value = s["default"]
         else:
             value = s["default"]
         result.append({**s, "value": value})
