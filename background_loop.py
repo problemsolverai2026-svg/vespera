@@ -25,7 +25,7 @@ OLLAMA_URL       = _cfg["ollama_url"]
 OLLAMA_MODEL     = _cfg["ollama_model"]
 RUN_INTERVAL     = BACKGROUND_LOOP_INTERVAL
 
-BACKGROUND_PROMPT = """You are a persistent memory system for a single user. Review the recent conversation and extract any durable facts worth remembering long-term.
+BACKGROUND_PROMPT = """You are a persistent memory system for a single user. Review the recent conversation and extract any facts worth remembering long-term.
 
 Past conversation:
 {conversation}
@@ -33,14 +33,22 @@ Past conversation:
 Already stored memories (do not repeat these):
 {memories}
 
-Extract durable facts: names, dates, projects, preferences, goals, decisions, relationships, and commitments.
-Write each as one concise, self-contained statement in third person (e.g. "User's project codename is Halcyon; launch date March 14").
+Capture ANYTHING durable about the user, including:
+- Names, nicknames, and relationships (family, friends, coworkers)
+- Projects, goals, and decisions
+- Preferences and favorites (food, music, hobbies, shows, sports teams, anything)
+- Habits, routines, and things they do often
+- Opinions and values they express
+- Important dates and commitments
+- Things they mention repeatedly across conversations
+
+Write each as one concise, self-contained statement in third person (e.g. "User's favorite band is Metallica" or "User drinks black coffee every morning").
 
 Rules:
 - Do NOT invent details not present in the conversation
 - Do NOT repeat facts already in stored memories
 - If you need to look something up, say: SEARCH: <question>
-- If the conversation contains no new durable facts, say: NOTHING_NEW
+- If the conversation contains no new facts worth storing, say: NOTHING_NEW
 - Max {max_length} characters total"""
 
 WEB_SEARCH_SUMMARY_PROMPT = """Summarize in 1-2 sentences, technically focused.
