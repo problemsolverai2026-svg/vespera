@@ -62,18 +62,17 @@ def call_local(prompt: str) -> str | None:
 
 def think() -> dict | None:
     """Returns dict with 'type' ('thought' or 'followup') and 'content', or None."""
-    convs = get_recent_conversations(limit=4)
-    conversation = "\n".join(
-        [f"{c['role'].upper()}: {_sanitize(c['content'], 200)}" for c in reversed(convs)]
-    ) if convs else "No conversations yet."
+    # Pull everything from memory — it's already distilled, context window doesn't matter here.
+    # Exclude follow-ups so we don't loop on our own questions.
+    all_mems = get_memories(layer="core", limit=1000) + \
+               [m for m in get_memories(layer="validated", limit=1000) if m.get("source") != "followup"]
+    memories = "\n".join([f"- {_sanitize(m['content'], 200)}" for m in all_mems]) if all_mems else "No memories yet."
 
-    # Background thoughts only — exclude conversation facts (source='conversation')
-    # so the AI isn't re-reading its own memory of what the user said as if it's thoughts.
-    mems = (
-        get_memories(layer="core", limit=3)
-        or get_memories(layer="validated", limit=5, source_filter="background_loop")
-    )
-    memories = "\n".join([f"- {_sanitize(m['content'], 150)}" for m in mems]) if mems else "No thoughts yet."
+    # Just the last 2 raw exchanges for immediate context.
+    convs = get_recent_conversations(limit=2)
+    conversation = "\n".join(
+        [f"{c['role'].upper()}: {_sanitize(c['content'], 150)}" for c in reversed(convs)]
+    ) if convs else "No recent conversation."
 
     raw = call_local(BACKGROUND_PROMPT.format(
         conversation=conversation, memories=memories, max_length=MAX_THOUGHT_LENGTH
