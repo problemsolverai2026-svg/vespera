@@ -81,6 +81,10 @@ def main():
             continue
         add_conversation(role="user", content=safe_input)
 
+        # Fire-and-forget fact extraction
+        from facts import extract_facts_async
+        extract_facts_async(safe_input)
+
         # Get response
         try:
             result = handle_message(safe_input)

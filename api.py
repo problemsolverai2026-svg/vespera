@@ -347,6 +347,12 @@ def chat():
     if not safe_message:
         return jsonify({"ok": False, "error": "Message contained only invalid characters"}), 400
     add_conversation(role="user", content=safe_message)
+
+    # Fire-and-forget fact extraction — stores durable user facts directly to
+    # validated memory without going through the background loop thought pipeline.
+    from facts import extract_facts_async
+    extract_facts_async(safe_message)
+
     try:
         result = handle_message(safe_message)
         if not isinstance(result, dict):
