@@ -62,7 +62,7 @@ export interface ComponentInfo {
 
 export interface OllamaModel {
   name: string;
-  size?: number;
+  size?: number | string;  // API returns pre-formatted string e.g. "9.0 GB"
   [k: string]: unknown;
 }
 

@@ -36,7 +36,7 @@ function StatusBar() {
     };
   }, []);
 
-  const layers: Array<[string, keyof StatusResponse]> = [
+  const layers: Array<[string, string]> = [
     ["Working", "working"],
     ["Recent", "recent"],
     ["Validated", "validated"],
@@ -56,7 +56,7 @@ function StatusBar() {
           {layers.map(([label, key]) => (
               <span key={label}>
               <span className="text-muted-foreground/70">{label}</span>{" "}
-              <span className="text-foreground">{(status?.[key] as number | undefined) ?? "—"}</span>
+              <span className="text-foreground">{(status?.memory?.[key] as number | undefined) ?? "—"}</span>
             </span>
           ))}
         </div>

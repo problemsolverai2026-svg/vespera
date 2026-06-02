@@ -10,11 +10,13 @@ export const Route = createFileRoute("/models")({
 
 const ASSIGNABLE = ["Background Loop", "Cleanup Crew", "Periodic Pruning", "Handoff"];
 
-function formatSize(bytes?: number) {
-  if (!bytes && bytes !== 0) return "—";
-  const gb = bytes / 1e9;
+function formatSize(size?: number | string) {
+  if (size === undefined || size === null) return "—";
+  // API returns pre-formatted strings like "9.0 GB" — pass them through directly.
+  if (typeof size === "string") return size;
+  const gb = size / 1e9;
   if (gb >= 1) return `${gb.toFixed(2)} GB`;
-  return `${(bytes / 1e6).toFixed(0)} MB`;
+  return `${(size / 1e6).toFixed(0)} MB`;
 }
 
 function AssignCard({ name, models }: { name: string; models: OllamaModel[] }) {
