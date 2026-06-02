@@ -240,6 +240,7 @@ def get_memories(
     limit: int = 20,
     include_pruned: bool = False,
     order_by: str = "created_at DESC",
+    source_filter: str = None,
 ) -> list[dict]:
     """Fetch memories, optionally filtered by layer.
 
@@ -260,6 +261,9 @@ def get_memories(
     if layer:
         query += " AND layer = ?"
         params.append(layer)
+    if source_filter:
+        query += " AND source = ?"
+        params.append(source_filter)
 
     query += f" ORDER BY {order_by} LIMIT ?"
     params.append(limit)
@@ -342,6 +346,19 @@ def backup_db(dest_path: str) -> str:
     os.replace(str(tmp), str(dest))
     log.info("Database backed up to %s", dest)
     return str(dest)
+
+
+def get_followups(limit: int = 5) -> list[dict]:
+    """Return pending follow-up questions the AI wants to ask the user.
+    These are memories with source='followup' that haven't been used yet.
+    """
+    return get_memories(layer="validated", limit=limit, source_filter="followup",
+                        order_by="created_at DESC")
+
+
+def mark_followup_used(memory_id: str) -> None:
+    """Soft-delete a follow-up after it has been surfaced to the user."""
+    prune_memory(memory_id, reason="asked", pruned_by="re-engagement")
 
 
 def get_stats() -> dict:

@@ -39,7 +39,7 @@ def _trim(text: str) -> str:
     if len(text) <= MAX_RESPONSE_LENGTH:
         return text
     return text[:MAX_RESPONSE_LENGTH - 20].rstrip() + "\n\n[response truncated]"
-from memory.store import get_memories, get_recent_conversations
+from memory.store import get_memories, get_recent_conversations, get_followups, mark_followup_used
 from web_search import search as web_search
 from tools import TOOL_DEFINITIONS, run_tool
 
@@ -110,7 +110,13 @@ Answer directly based on the search results. Use today's date to determine what 
 
 
 def get_context() -> tuple[str, str]:
-    mems = get_memories(layer="core", limit=5) or get_memories(layer="validated", limit=5)
+    # Exclude follow-up questions from context — they surface only via re-engagement,
+    # not via the regular memory context (prevents them repeating every conversation).
+    def _not_followup(mems):
+        return [m for m in mems if m.get("source") != "followup"]
+
+    mems = _not_followup(get_memories(layer="core", limit=5)) or \
+           _not_followup(get_memories(layer="validated", limit=5))
     memory_str = "\n".join([f"- {_sanitize(m['content'], 120)}" for m in mems]) if mems else "No memories yet."
 
     # Limit to 6 recent turns — llama3.2:3b has ~2K context; 20 turns easily overflows it.
@@ -425,28 +431,61 @@ def respond_cloud(message: str, memories: str, recent: str, override_prompt: str
 # MAIN ENTRY POINT
 # ─────────────────────────────────────────────
 
-def handle_message(message: str) -> dict:
-    # Sanitize user input before it touches any prompt or storage
-    message = _sanitize(message, 8000)
-    memories, recent = get_context()
+# Gap threshold: if the last conversation was more than this many minutes ago,
+# treat the current message as the start of a new session and surface a follow-up.
+_SESSION_GAP_MINUTES = int(os.getenv("VESPERA_SESSION_GAP_MINUTES", "30"))
+
+
+def _is_new_session() -> bool:
+    """Return True if enough time has passed since the last conversation to treat this as a new session."""
+    try:
+        from datetime import datetime, timezone
+        convs = get_recent_conversations(limit=2)
+        if not convs:
+            return False  # no history = first ever message, not a return
+        # convs are newest-first; first entry is most recent
+        last_ts_str = convs[0].get("timestamp", "")
+        if not last_ts_str:
+            return False
+        last_ts = datetime.fromisoformat(last_ts_str)
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=timezone.utc)
+        gap = (datetime.now(timezone.utc) - last_ts).total_seconds() / 60
+        return gap >= _SESSION_GAP_MINUTES
+    except Exception:
+        return False
+
+
+def _get_reengagement_suffix() -> tuple[str, str | None]:
+    """Return (suffix_text, followup_memory_id) if there's a pending follow-up to surface.
+    Returns ('', None) if nothing to surface.
+    """
+    try:
+        followups = get_followups(limit=3)
+        if not followups:
+            return "", None
+        # Pick the most recent follow-up
+        f = followups[0]
+        return f"\n\n{f['content']}", f["id"]
+    except Exception:
+        return "", None
+
+
+def _route_message(message: str, memories: str, recent: str) -> dict:
+    """Core routing logic — returns a result dict without re-engagement suffix."""
     complexity, reason, needs_search = score_complexity(message)
     log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)
 
-    # Web search first for real-time questions — always synthesize with cloud
     if needs_search:
         results = web_search(message)
         if not results:
-            # All providers failed — don't silently fall through to stale local answers.
             return {"response": "I wasn't able to retrieve real-time information right now. Please try again in a moment.", "handled_by": "search-failed", "complexity": complexity}
         from datetime import datetime
         today = datetime.now().strftime("%A, %B %d, %Y")
-        # Cap results to prevent context overflow in small local models (2K–4K tokens)
         results_capped = results[:3000]
         if len(results) > 3000:
             results_capped += "\n[search results truncated]"
         formatted_prompt = SEARCH_RESPONSE_PROMPT.format(today=today, results=results_capped, message=message)
-        # Route to cloud if the query is both real-time AND complex — local model
-        # was always used before even when complexity >= threshold.
         if complexity >= COMPLEXITY_THRESHOLD and os.getenv("CLOUD_API_KEY", ""):
             response = respond_cloud(message, memories, recent, override_prompt=formatted_prompt)
             return {"response": _trim(response), "handled_by": "search+cloud", "complexity": complexity}
@@ -455,20 +494,15 @@ def handle_message(message: str) -> dict:
             response = "I found search results but couldn't summarize them — local model unavailable."
         return {"response": _trim(response), "handled_by": "search+local", "complexity": complexity}
 
-    # Complex reasoning — cloud if available, else local
-    # Re-read the key here too — the gate must match respond_cloud()'s live read
-    # so a key added via the UI after startup actually enables cloud routing.
     if complexity >= COMPLEXITY_THRESHOLD:
         if os.getenv("CLOUD_API_KEY", ""):
             response = respond_cloud(message, memories, recent)
             return {"response": _trim(response), "handled_by": "cloud", "complexity": complexity}
-        # No cloud key — try local
         response, _ = respond_locally(message, memories, recent)
         if not response:
             response = "I'm having trouble reaching my local model right now. Please check that Ollama is running."
         return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
 
-    # Simple — local model
     response, needs_handoff = respond_locally(message, memories, recent)
     if needs_handoff:
         response = respond_cloud(message, memories, recent)
@@ -476,6 +510,32 @@ def handle_message(message: str) -> dict:
     if not response:
         response = "I'm having trouble responding right now. Please check that Ollama is running."
     return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
+
+
+def handle_message(message: str) -> dict:
+    message = _sanitize(message, 8000)
+
+    # Check for re-engagement opportunity — surface a follow-up if returning after a gap
+    reengagement_suffix = ""
+    followup_id = None
+    if _is_new_session():
+        reengagement_suffix, followup_id = _get_reengagement_suffix()
+        if reengagement_suffix:
+            log.info("Re-engagement: surfacing follow-up %s", followup_id[:8] if followup_id else "none")
+
+    memories, recent = get_context()
+    result = _route_message(message, memories, recent)
+
+    # Append follow-up question to response and mark it used
+    if reengagement_suffix and followup_id and result.get("handled_by") != "search-failed":
+        result["response"] = result["response"] + reengagement_suffix
+        result["followup_asked"] = True
+        try:
+            mark_followup_used(followup_id)
+        except Exception:
+            log.exception("Failed to mark follow-up used")
+
+    return result
 
 
 if __name__ == "__main__":
