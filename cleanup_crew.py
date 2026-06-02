@@ -36,7 +36,7 @@ Respond in JSON only:
 
 def call_local(prompt: str) -> str | None:
     from utils import call_ollama
-    return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.1)
+    return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.1, timeout=30)
 
 
 def review_memory(memory: dict) -> tuple[str, str]:

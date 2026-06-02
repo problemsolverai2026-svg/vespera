@@ -206,7 +206,7 @@ def update_component(name):
     auth_err = require_auth()
     if auth_err: return auth_err
     if name not in COMPONENTS:
-        return jsonify({"ok": False, "error": f"Unknown component: {name}"}), 404
+        return jsonify({"ok": False, "error": "Not found"}), 404
 
     data = request.json or {}
     env_path = os.path.join(os.path.dirname(__file__), ".env")
@@ -630,7 +630,8 @@ def delete_reminder(rid):
     auth_err = require_auth()
     if auth_err: return auth_err
     import re
-    if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', rid, re.IGNORECASE):
+    rid = rid.lower()  # normalize so uppercase UUIDs don't bypass the lowercase-only pattern
+    if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', rid):
         return jsonify({"ok": False, "error": "Invalid reminder id"}), 400
     from scheduler import cancel_reminder
     ok = cancel_reminder(rid)
