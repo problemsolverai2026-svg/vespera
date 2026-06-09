@@ -116,8 +116,10 @@ def think() -> dict | None:
                 return {"type": "thought", "content": f"[web] {thought}"[:MAX_THOUGHT_LENGTH]}
         return None
 
-    # FOLLOWUP: — question to ask the user next session (re.DOTALL captures multi-line)
-    followup_match = re.search(r'FOLLOWUP:\s*(.+)', raw, re.IGNORECASE | re.DOTALL)
+    # FOLLOWUP: — question to ask the user next session
+    # [^\ n]+ stops at the first newline — prevents capturing prose the model
+    # appended after the question when re.DOTALL was in effect.
+    followup_match = re.search(r'FOLLOWUP:\s*([^\n]+)', raw, re.IGNORECASE)
     if followup_match:
         question = _sanitize(followup_match.group(1).strip(), MAX_THOUGHT_LENGTH)
         if question:

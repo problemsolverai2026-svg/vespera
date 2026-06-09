@@ -92,6 +92,11 @@ def _run_pruning_inner():
     promoted = kept = pruned = 0
     for memory in validated:
         decision, reason = review_memory(memory, core_context)
+        # Follow-up questions are transient re-engagement prompts, not durable facts.
+        # Block promotion to core — they must never become permanent memories.
+        # Delete (stale cleanup) and keep paths are intentionally left unchanged.
+        if memory.get("source") == "followup" and decision == "promote":
+            decision = "keep"
         if decision == "promote":
             promote_memory(memory["id"], new_trust_score=0.95)
             log.info("PROMOTED %s → core", memory["id"][:8])

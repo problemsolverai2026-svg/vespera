@@ -94,9 +94,15 @@ def is_allowed(user_id: int) -> bool:
 def chat(message: str) -> dict:
     try:
         url = _get_api_url()
-        headers = {}
-        if VESPERA_API_TOKEN:
-            headers["Authorization"] = f"Bearer {VESPERA_API_TOKEN}"
+        # Re-read from env on every call so UI updates (or a first-time .env write)
+        # take effect without restarting the bot process.
+        try:
+            from dotenv import load_dotenv as _ldenv
+            _ldenv(Path(__file__).parent / ".env", override=True)
+        except ImportError:
+            pass
+        _live_token = os.getenv("VESPERA_API_TOKEN", "")
+        headers = {"Authorization": f"Bearer {_live_token}"} if _live_token else {}
         resp = None
         resp = requests.post(f"{url}/api/chat", json={"message": message, "tts": True}, headers=headers, timeout=60)
         try:
@@ -167,7 +173,9 @@ def run():
         if audio_url:
             try:
                 base = _get_api_url()
-                headers = {"Authorization": f"Bearer {VESPERA_API_TOKEN}"} if VESPERA_API_TOKEN else {}
+                # chat() already reloaded dotenv above; os.getenv picks up the fresh value.
+                _live_token = os.getenv("VESPERA_API_TOKEN", "")
+                headers = {"Authorization": f"Bearer {_live_token}"} if _live_token else {}
                 r = None
                 r = requests.get(f"{base}{audio_url}", headers=headers, timeout=15, stream=True)
                 try:
