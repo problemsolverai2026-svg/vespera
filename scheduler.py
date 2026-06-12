@@ -15,6 +15,7 @@ No external calendar needed — fully local.
 """
 
 import os
+import re
 import uuid
 import threading
 import concurrent.futures
@@ -179,16 +180,88 @@ def reschedule_or_complete(reminder: dict):
 # PARSE NATURAL LANGUAGE
 # ─────────────────────────────────────────────
 
+# Recurrence keywords for direct detection — avoids relying on the local model for this
+_RECUR_DAILY   = re.compile(r"\b(every\s+day|daily|each\s+day|every\s+morning|every\s+night|every\s+evening)\b", re.IGNORECASE)
+_RECUR_WEEKLY  = re.compile(r"\b(every\s+week|weekly|each\s+week)\b", re.IGNORECASE)
+_RECUR_HOURLY  = re.compile(r"\b(every\s+hour|hourly|each\s+hour)\b", re.IGNORECASE)
+
+# Time-only patterns (no date) that dateutil reliably handles with a default
+_TIME_ONLY_RE  = re.compile(
+    r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"
+    r"|\bin\s+\d+\s+(?:minute|hour)s?\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_recur(text: str) -> str | None:
+    if _RECUR_HOURLY.search(text):  return "hourly"
+    if _RECUR_DAILY.search(text):   return "daily"
+    if _RECUR_WEEKLY.search(text):  return "weekly"
+    return None
+
+
+def _extract_message(text: str) -> str:
+    """Extract the core reminder message from natural language input."""
+    # 'remind me to X at Y' or 'remind me to X tomorrow' — grab the X part
+    m = re.search(
+        r"(?:remind\s+me\s+(?:every\s+\S+\s+)?(?:at\s+[\d:apm]+\s+)?to\s+)(.+?)(?:\s+(?:at|in|by|on|tomorrow|today|every|each)\s+.*)?$",
+        text, re.IGNORECASE
+    )
+    if m:
+        return m.group(1).strip()
+    # fallback: strip leading boilerplate only
+    cleaned = re.sub(
+        r"^(?:remind\s+me\s+(?:to\s+)?|set\s+a\s+reminder\s+(?:to\s+)?|alert\s+me\s+(?:to\s+)?)",
+        "", text, flags=re.IGNORECASE
+    ).strip()
+    return cleaned or text
+
+
+def _parse_time_dateutil(text: str, tz: ZoneInfo, now: datetime) -> datetime | None:
+    """Try to extract a fire_at datetime using dateutil — fast, no model needed."""
+    # Handle 'in X minutes/hours' explicitly — dateutil doesn't do relative offsets
+    rel = re.search(r"\bin\s+(\d+)\s+(minute|hour)s?\b", text, re.IGNORECASE)
+    if rel:
+        n, unit = int(rel.group(1)), rel.group(2).lower()
+        delta = relativedelta(minutes=n) if unit == "minute" else relativedelta(hours=n)
+        return now + delta
+
+    try:
+        from dateutil import parser as du_parser
+        # Use a default with zeroed minutes/seconds so 'at 9pm' gives 9:00:00 not 9:33:00
+        default = now.replace(minute=0, second=0, microsecond=0)
+        dt = du_parser.parse(text, default=default, fuzzy=True)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        # If parsed time is in the past and no explicit date was given, bump to tomorrow
+        if dt <= now and _TIME_ONLY_RE.search(text):
+            dt = dt + relativedelta(days=1)
+        return dt if dt > now else None
+    except Exception:
+        return None
+
+
 def parse_reminder(text: str) -> dict | None:
     """
-    Use the local model to parse a natural language reminder request.
-    Returns dict with: message, fire_at (ISO), recur (daily/weekly/hourly/None)
+    Parse a natural language reminder request.
+    Strategy: dateutil first (fast, accurate for common formats);
+    fall back to local model only when dateutil can't find a time.
+    Returns dict with: message, fire_at (datetime), recur (str|None)
     """
     tz = ZoneInfo(TIMEZONE)
-    now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M %Z")
-
+    now = datetime.now(tz)
     safe_text = _sanitize(text, 500)
-    prompt = f"""Parse this reminder request into structured data.
+
+    # Detect recurrence directly — don't trust the model for this
+    recur = _extract_recur(safe_text)
+
+    # Try dateutil first
+    fire_at = _parse_time_dateutil(safe_text, tz, now)
+
+    # Fallback: local model
+    if fire_at is None:
+        now_str = now.strftime("%Y-%m-%d %H:%M %Z")
+        prompt = f"""Parse this reminder request into structured data.
 
 Current time: {now_str}
 
@@ -196,57 +269,54 @@ User request: "{safe_text}"
 
 Return JSON only:
 {{
-  "message": "the reminder message",
-  "fire_at": "ISO 8601 datetime with timezone offset",
-  "recur": "daily" | "weekly" | "hourly" | null
+  "message": "the reminder message (what to remind about, concise)",
+  "fire_at": "ISO 8601 datetime with timezone offset, must be in the future",
+  "recur": null
 }}
 
 Rules:
-- fire_at must be in the future
+- fire_at must be in the future relative to current time above
 - Use timezone: {TIMEZONE}
-- If no date specified, assume today
-- "every morning" = daily at 7am
-- "every day" = daily at same time
-- Keep message concise"""
+- If no date specified, assume today; if time already passed, use tomorrow
+- Do NOT add recurrence — set recur to null always
+- Keep message concise (strip 'remind me to' prefix)"""
 
-    # NOTE: We call call_local() directly here rather than routing through handle_message()
-    # because this is an internal structured JSON extraction task — not a user-facing response.
-    # Routing through handle_message() would pollute conversation history, trigger unnecessary
-    # complexity scoring overhead, and replace our structured prompt with the generic chat prompt.
-    # Limitation: complex time expressions always use the local model; upgrade path is to call
-    # respond_cloud() from handoff.py for a retry if the local parse fails.
-    raw = _call_local(prompt)
-    if not raw:
+        raw = _call_local(prompt)
+        if not raw:
+            log.error("Local model unavailable for reminder parsing")
+            return None
+        try:
+            from utils import parse_json_response
+            data = parse_json_response(raw)
+            if not data or not data.get("fire_at"):
+                log.error("Model returned no fire_at: %s", raw[:100])
+                return None
+            fire_at = datetime.fromisoformat(data["fire_at"])
+            if fire_at.tzinfo is None:
+                fire_at = fire_at.replace(tzinfo=tz)
+            # Use model's message only if we don't have a better one
+            model_message = _sanitize(str(data.get("message") or safe_text), 500)
+        except Exception as e:
+            log.error("Model parse error: %s | raw: %s", e, raw[:100])
+            return None
+    else:
+        model_message = None  # will use _extract_message below
+
+    # Validate fire_at
+    if fire_at <= now:
+        log.error("fire_at is in the past: %s", fire_at)
+        return None
+    max_future = now + relativedelta(years=1)
+    if fire_at > max_future:
+        log.error("fire_at is more than 1 year out: %s", fire_at)
         return None
 
-    try:
-        from utils import parse_json_response
-        data = parse_json_response(raw)
-        if not data or not data.get("fire_at"):
-            log.error("Model returned JSON without fire_at: %s", raw[:100])
-            return None
-        fire_at = datetime.fromisoformat(data["fire_at"])
-        if fire_at.tzinfo is None:
-            fire_at = fire_at.replace(tzinfo=ZoneInfo(TIMEZONE))
-        now_tz = datetime.now(tz=ZoneInfo(TIMEZONE))
-        if fire_at <= now_tz:
-            log.error("Parsed fire_at is in the past: %s", fire_at)
-            return None
-        max_future = now_tz + relativedelta(years=1)
-        if fire_at > max_future:
-            log.error("Parsed fire_at is more than 1 year in the future: %s", fire_at)
-            return None
-        _VALID_RECUR = {"daily", "weekly", "hourly"}
-        recur_raw = data.get("recur")
-        recur = recur_raw if recur_raw in _VALID_RECUR else None
-        return {
-            "message":  _sanitize(str(data.get("message") or safe_text), 500),
-            "fire_at":  fire_at,
-            "recur":    recur,
-        }
-    except Exception as e:
-        log.error("Parse error: %s | raw: %s", e, raw[:100])
-        return None
+    message = model_message or _extract_message(safe_text) or safe_text
+    return {
+        "message": _sanitize(message, 500),
+        "fire_at": fire_at,
+        "recur":   recur,
+    }
 
 
 # ─────────────────────────────────────────────

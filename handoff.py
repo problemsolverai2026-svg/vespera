@@ -471,8 +471,129 @@ def _get_reengagement_suffix() -> tuple[str, str | None]:
         return "", None
 
 
+_REMINDER_PRE_CHECK = re.compile(
+    r"\b(remind|reminder|set a reminder|set reminder|alert me|notify me)\b",
+    re.IGNORECASE,
+)
+_LIST_REMINDERS_CHECK = re.compile(
+    r"\b(list|show|what are|my) reminders?\b",
+    re.IGNORECASE,
+)
+_CANCEL_REMINDER_CHECK = re.compile(
+    r"\b(cancel|delete|remove) reminder\b",
+    re.IGNORECASE,
+)
+
+# Note-taking patterns
+_NOTE_SAVE_CHECK = re.compile(
+    r"^(?:note(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note)\s*[:\-]?\s+",
+    re.IGNORECASE,
+)
+_NOTE_LIST_CHECK = re.compile(
+    r"\b(?:show|list|what(?:'s| are| were)?|my|get|read)\s+(?:my\s+)?notes?\b",
+    re.IGNORECASE,
+)
+_NOTE_DELETE_CHECK = re.compile(
+    r"\b(?:delete|remove|clear|erase)\s+note\b",
+    re.IGNORECASE,
+)
+
+
+def _handle_reminder_locally(message: str) -> dict | None:
+    """Intercept reminder requests and handle them with the local model. Returns result dict or None."""
+
+    # List reminders
+    if _LIST_REMINDERS_CHECK.search(message):
+        from tools import run_list_reminders
+        return {"response": run_list_reminders(), "handled_by": "local-reminder", "complexity": 0.0}
+
+    # Cancel reminder
+    if _CANCEL_REMINDER_CHECK.search(message):
+        match = re.search(r'[0-9a-f-]{8,}', message, re.IGNORECASE)
+        if match:
+            from tools import run_cancel_reminder
+            return {"response": run_cancel_reminder(match.group(0)), "handled_by": "local-reminder", "complexity": 0.0}
+        return {"response": "Which reminder? Say 'list reminders' to see IDs.", "handled_by": "local-reminder", "complexity": 0.0}
+
+    # Set reminder — use scheduler's local parser
+    if _REMINDER_PRE_CHECK.search(message):
+        try:
+            from scheduler import parse_reminder, add_reminder
+            from zoneinfo import ZoneInfo
+            parsed = parse_reminder(message)
+            if parsed:
+                rid = add_reminder(parsed["message"], parsed["fire_at"], recur=parsed.get("recur"))
+                tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+                fire_local = parsed["fire_at"].astimezone(tz)
+                dt_str = fire_local.strftime("%A, %B %d at %I:%M %p %Z").replace(" 0", " ")
+                recur_note = f" (repeats {parsed['recur']})" if parsed.get("recur") else ""
+                return {"response": f"Got it — I'll remind you to {parsed['message']} on {dt_str}{recur_note}.", "handled_by": "local-reminder", "complexity": 0.0}
+            else:
+                return {"response": "I couldn't parse the time for that reminder. Try something like 'remind me to call John at 8pm'.", "handled_by": "local-reminder", "complexity": 0.0}
+        except Exception as e:
+            log.warning("Local reminder handling failed: %s", e)
+            return None
+
+    return None
+
+
+def _handle_note_locally(message: str) -> dict | None:
+    """Intercept note-taking requests and handle them directly. Returns result dict or None."""
+    from notes import add_note, list_notes, delete_note, init_notes_db
+    init_notes_db()
+
+    # Save a note
+    m = _NOTE_SAVE_CHECK.match(message)
+    if m:
+        content = message[m.end():].strip()
+        if not content:
+            return {"response": "What do you want to note? Try: 'note: pick up milk'", "handled_by": "local-note", "complexity": 0.0}
+        note = add_note(content)
+        short_id = note["id"][:8]
+        return {"response": f"\U0001f4dd Noted: {content} (id: {short_id})", "handled_by": "local-note", "complexity": 0.0}
+
+    # List notes
+    if _NOTE_LIST_CHECK.search(message):
+        notes = list_notes()
+        if not notes:
+            return {"response": "No notes saved yet. Say 'note: something' to add one.", "handled_by": "local-note", "complexity": 0.0}
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, timezone
+        tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+        lines = []
+        for i, n in enumerate(notes, 1):
+            try:
+                dt = datetime.fromisoformat(n["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            lines.append(f"{i}. [{n['id'][:8]}] {n['content']}  ({date_str})")
+        return {"response": "\U0001f4cb Your notes:\n" + "\n".join(lines), "handled_by": "local-note", "complexity": 0.0}
+
+    # Delete a note
+    if _NOTE_DELETE_CHECK.search(message):
+        match = re.search(r'[0-9a-f-]{4,}', message, re.IGNORECASE)
+        if match:
+            ok = delete_note(match.group(0))
+            return {"response": "Note deleted." if ok else f"No note found with id '{match.group(0)}'.", "handled_by": "local-note", "complexity": 0.0}
+        return {"response": "Which note? Say 'my notes' to see IDs, then 'delete note <id>'.", "handled_by": "local-note", "complexity": 0.0}
+
+    return None
+
+
 def _route_message(message: str, memories: str, recent: str) -> dict:
     """Core routing logic — returns a result dict without re-engagement suffix."""
+
+    # Note requests — handle locally before complexity scoring
+    note_result = _handle_note_locally(message)
+    if note_result is not None:
+        return note_result
+
+    # Reminder requests — handle locally before complexity scoring
+    reminder_result = _handle_reminder_locally(message)
+    if reminder_result is not None:
+        return reminder_result
+
     complexity, reason, needs_search = score_complexity(message)
     log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)
 

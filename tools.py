@@ -210,6 +210,175 @@ def run_write_file(path: str, content: str) -> str:
 
 
 # ─────────────────────────────────────────────
+# CALENDAR TOOL
+# ─────────────────────────────────────────────
+
+TOOL_DEFINITIONS.append({
+    "name": "get_calendar",
+    "description": "Get upcoming calendar events from the user's Apple Calendar. Returns events for the next N days (default 7).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "days": {
+                "type": "integer",
+                "description": "Number of days ahead to look. Default 7."
+            }
+        },
+        "required": []
+    }
+})
+
+
+def run_get_calendar(days: int = 7) -> str:
+    """Read upcoming events — tries Google Calendar (gog) first, falls back to Apple Calendar."""
+    import subprocess
+    from datetime import datetime, timezone, timedelta
+    days = max(1, min(int(days), 90))
+
+    # ── Google Calendar via gog ──────────────────────────────────────
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff = now + timedelta(days=days)
+        from_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        to_str   = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+        result = subprocess.run(
+            ["gog", "calendar", "events", "primary",
+             "--from", from_str, "--to", to_str, "--plain"],
+            capture_output=True, text=True, timeout=15
+        )
+        output = result.stdout.strip()
+        if result.returncode == 0 and output and output.lower() != "no events":
+            return f"Upcoming events (next {days} days — Google Calendar):\n{output}"
+        if result.returncode == 0:
+            google_result = f"No events in Google Calendar for the next {days} days."
+        else:
+            google_result = f"Google Calendar unavailable: {result.stderr.strip()[:120]}"
+    except subprocess.TimeoutExpired:
+        google_result = "Google Calendar timed out."
+    except FileNotFoundError:
+        google_result = "gog not found — Google Calendar unavailable."
+    except Exception as e:
+        google_result = f"Google Calendar error: {e}"
+
+    # ── Apple Calendar fallback via AppleScript ──────────────────────
+    script = f'''
+tell application "Calendar"
+    set output to ""
+    set today to current date
+    set cutoff to today + ({days} * days)
+    repeat with cal in calendars
+        repeat with ev in (every event of cal whose start date >= today and start date <= cutoff)
+            set evTitle to summary of ev
+            set evStart to start date of ev as string
+            set calName to name of cal
+            set output to output & calName & " | " & evTitle & " | " & evStart & "\n"
+        end repeat
+    end repeat
+    if output is "" then
+        return "EMPTY"
+    end if
+    return output
+end tell
+'''
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=15
+        )
+        apple_out = result.stdout.strip()
+        if result.returncode == 0 and apple_out and apple_out != "EMPTY":
+            lines = [l for l in apple_out.split("\n") if l.strip()]
+            lines.sort(key=lambda l: l.split(" | ")[2] if len(l.split(" | ")) > 2 else l)
+            return f"Upcoming events (next {days} days — Apple Calendar):\n" + "\n".join(lines)
+    except Exception:
+        pass
+
+    return f"{google_result} Apple Calendar also empty. No upcoming events found."
+
+
+# ─────────────────────────────────────────────
+# REMINDER TOOLS
+# ─────────────────────────────────────────────
+
+def run_set_reminder(message: str, when: str, recur: str = None) -> str:
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    import re
+    tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+    now = datetime.now(tz)
+
+    fire_at = None
+    # Try ISO 8601 first
+    try:
+        dt = datetime.fromisoformat(when)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        fire_at = dt
+    except ValueError:
+        pass
+
+    # Try dateutil parser as fallback
+    if fire_at is None:
+        try:
+            from dateutil import parser as du_parser
+            dt = du_parser.parse(when, default=now)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tz)
+            fire_at = dt
+        except Exception:
+            pass
+
+    if fire_at is None:
+        return f"Error: could not parse time '{when}'. Use a format like '8:45pm', 'today at 8:45am', or '2026-06-04T20:30:00'."
+
+    # If time is in the past, bump to tomorrow (for same-day times that already passed)
+    if fire_at <= now:
+        from dateutil.relativedelta import relativedelta
+        fire_at = fire_at + relativedelta(days=1)
+
+    try:
+        from scheduler import add_reminder
+        rid = add_reminder(message, fire_at, recur=recur)
+        local_str = fire_at.astimezone(tz).strftime("%Y-%m-%d %I:%M %p %Z")
+        return f"Reminder set: '{message}' at {local_str} (id: {rid})"
+    except Exception as e:
+        return f"Error setting reminder: {e}"
+
+
+def run_list_reminders() -> str:
+    try:
+        from scheduler import list_reminders
+        from datetime import timezone
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+        reminders = list_reminders()
+        if not reminders:
+            return "No active reminders."
+        lines = []
+        for r in reminders:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(r["fire_at"]).astimezone(tz)
+                time_str = dt.strftime("%Y-%m-%d %I:%M %p %Z")
+            except Exception:
+                time_str = r["fire_at"]
+            recur = f" (recurring: {r['recur']})" if r.get("recur") else ""
+            lines.append(f"- [{r['id'][:8]}] {r['message']} at {time_str}{recur}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing reminders: {e}"
+
+
+def run_cancel_reminder(rid: str) -> str:
+    try:
+        from scheduler import cancel_reminder
+        ok = cancel_reminder(rid)
+        return "Reminder cancelled." if ok else f"No active reminder found with id '{rid}'."
+    except Exception as e:
+        return f"Error cancelling reminder: {e}"
+
+
+# ─────────────────────────────────────────────
 # EXPLICIT EXPORTS
 # ─────────────────────────────────────────────
 
@@ -221,10 +390,18 @@ __all__ = ["TOOL_DEFINITIONS", "run_tool"]
 # ─────────────────────────────────────────────
 
 def run_tool(name: str, inputs: dict) -> str:
+    if name == "get_calendar":
+        return run_get_calendar(int(inputs.get("days", 7)))
     if name == "shell":
         return run_shell(inputs.get("command", ""), inputs.get("workdir"))
     if name == "read_file":
         return run_read_file(inputs.get("path", ""))
     if name == "write_file":
         return run_write_file(inputs.get("path", ""), inputs.get("content", ""))
+    if name == "set_reminder":
+        return run_set_reminder(inputs.get("message", ""), inputs.get("when", ""), inputs.get("recur"))
+    if name == "list_reminders":
+        return run_list_reminders()
+    if name == "cancel_reminder":
+        return run_cancel_reminder(inputs.get("id", ""))
     return f"Error: unknown tool '{name}'"

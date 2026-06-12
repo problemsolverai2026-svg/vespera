@@ -644,6 +644,166 @@ def delete_reminder(rid):
     return jsonify({"ok": ok})
 
 
+# ─────────────────────────────────────────────
+# NOTES
+# ─────────────────────────────────────────────
+
+@app.route("/notes")
+def notes_ui():
+    """Simple notes UI page — no auth required for local use."""
+    return '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vespera Notes</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;
+       display: flex; align-items: center; gap: .5rem; }
+  .add-row { display: flex; gap: .75rem; margin-bottom: 2rem; }
+  .add-row input { flex: 1; background: #1e2130; border: 1px solid #2d3248;
+                   border-radius: 8px; padding: .65rem 1rem; color: #e2e8f0;
+                   font-size: .95rem; outline: none; }
+  .add-row input:focus { border-color: #6366f1; }
+  .add-row button { background: #6366f1; color: #fff; border: none;
+                    border-radius: 8px; padding: .65rem 1.25rem;
+                    font-size: .95rem; cursor: pointer; white-space: nowrap; }
+  .add-row button:hover { background: #4f46e5; }
+  .notes-list { display: flex; flex-direction: column; gap: .75rem; }
+  .note-card { background: #1e2130; border: 1px solid #2d3248; border-radius: 10px;
+               padding: 1rem 1.25rem; display: flex; justify-content: space-between;
+               align-items: flex-start; gap: 1rem; }
+  .note-content { flex: 1; font-size: .95rem; line-height: 1.5; word-break: break-word; }
+  .note-meta { font-size: .75rem; color: #64748b; margin-top: .3rem; }
+  .delete-btn { background: none; border: none; color: #64748b; cursor: pointer;
+                font-size: 1.1rem; padding: .2rem .4rem; border-radius: 4px;
+                flex-shrink: 0; }
+  .delete-btn:hover { color: #f87171; background: #2d1f1f; }
+  .empty { text-align: center; color: #64748b; padding: 3rem;
+           font-size: .95rem; }
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #22c55e;
+           color: #fff; padding: .6rem 1rem; border-radius: 8px;
+           font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<h1>📝 Vespera Notes</h1>
+<div class="add-row">
+  <input id="input" type="text" placeholder="Type a note and press Enter or Save…" />
+  <button onclick="saveNote()">Save</button>
+</div>
+<div class="notes-list" id="list"></div>
+<div class="empty" id="empty" style="display:none">No notes yet. Add one above.</div>
+<div class="toast" id="toast"></div>
+<script>
+  const API = \'\' ;
+  async function load() {
+    const r = await fetch(API + \'/api/notes\');
+    const notes = await r.json();
+    const list = document.getElementById(\'list\');
+    const empty = document.getElementById(\'empty\');
+    list.innerHTML = \'\';
+    if (!notes.length) { empty.style.display = \'\'; return; }
+    empty.style.display = \'none\';
+    notes.forEach(n => {
+      const d = new Date(n.created_at);
+      const dateStr = d.toLocaleDateString(\'en-US\', {month:\'short\',day:\'numeric\'})
+                    + \' \' + d.toLocaleTimeString(\'en-US\',{hour:\'numeric\',minute:\'2-digit\'});
+      const card = document.createElement(\'div\');
+      card.className = \'note-card\';
+      card.innerHTML = `
+        <div class="note-content">
+          <div>${escHtml(n.content)}</div>
+          <div class="note-meta">${dateStr} &nbsp;·&nbsp; ${n.id.slice(0,8)}</div>
+        </div>
+        <button class="delete-btn" title="Delete" onclick="del(\'${n.id}\')">✕</button>`;
+      list.appendChild(card);
+    });
+  }
+  function escHtml(s) {
+    return s.replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');
+  }
+  async function saveNote() {
+    const inp = document.getElementById(\'input\');
+    const content = inp.value.trim();
+    if (!content) return;
+    await fetch(API + \'/api/notes\', {
+      method: \'POST\', headers:{\'Content-Type\':\'application/json\'},
+      body: JSON.stringify({content})
+    });
+    inp.value = \'\';
+    toast(\'Note saved ✓\');
+    load();
+  }
+  async function del(id) {
+    await fetch(API + \'/api/notes/\' + id, {method:\'DELETE\'});
+    toast(\'Deleted\');
+    load();
+  }
+  function toast(msg) {
+    const t = document.getElementById(\'toast\');
+    t.textContent = msg; t.classList.add(\'show\');
+    setTimeout(() => t.classList.remove(\'show\'), 2000);
+  }
+  document.getElementById(\'input\').addEventListener(\'keydown\', e => {
+    if (e.key === \'Enter\') saveNote();
+  });
+  load();
+</script>
+</body>
+</html>
+'''
+
+
+@app.route("/api/notes", methods=["GET"])
+def get_notes():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    try:
+        from notes import list_notes, init_notes_db
+        init_notes_db()
+        return jsonify(list_notes())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/notes", methods=["POST"])
+def create_note():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    data = request.get_json(silent=True) or {}
+    content = str(data.get("content", "")).strip()
+    if not content:
+        return jsonify({"error": "content is required"}), 400
+    try:
+        from notes import add_note, init_notes_db
+        init_notes_db()
+        note = add_note(content)
+        return jsonify(note), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/notes/<note_id>", methods=["DELETE"])
+def remove_note(note_id):
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    try:
+        from notes import delete_note, init_notes_db
+        init_notes_db()
+        ok = delete_note(note_id)
+        if ok:
+            return jsonify({"deleted": True})
+        return jsonify({"error": "Note not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/backup", methods=["POST"])
 def run_backup():
     auth_err = require_auth()

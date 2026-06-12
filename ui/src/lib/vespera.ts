@@ -75,6 +75,13 @@ export interface SecuritySettings {
   [k: string]: unknown;
 }
 
+export interface NoteItem {
+  id: string;
+  content: string;
+  created_at: string;
+  [k: string]: unknown;
+}
+
 export const vespera = {
   chat: (message: string) =>
     req<ChatResponse>("/api/chat", {
@@ -99,4 +106,12 @@ export const vespera = {
       method: "POST",
       body: JSON.stringify({ TELEGRAM_ALLOWED_USERS: ids.join(",") }),
     }),
+  notes: () => req<NoteItem[]>("/api/notes"),
+  addNote: (content: string) =>
+    req<NoteItem>("/api/notes", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  deleteNote: (id: string) =>
+    req<{ deleted: boolean }>(`/api/notes/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

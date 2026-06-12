@@ -34,3 +34,6 @@ backups/
 ui/node_modules/
 ui/dist/
 ui/.env.local
+
+# Personal seed files — local only, never push
+seed/

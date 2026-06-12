@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResourcesRouteImport } from './routes/resources'
+import { Route as NotesRouteImport } from './routes/notes'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
@@ -24,6 +25,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ResourcesRoute = ResourcesRouteImport.update({
   id: '/resources',
   path: '/resources',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotesRoute = NotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModelsRoute = ModelsRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/api-keys': typeof ApiKeysRoute
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
+  '/notes': typeof NotesRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/api-keys': typeof ApiKeysRoute
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
+  '/notes': typeof NotesRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/api-keys': typeof ApiKeysRoute
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
+  '/notes': typeof NotesRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -79,16 +88,25 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/memory'
     | '/models'
+    | '/notes'
     | '/resources'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api-keys' | '/memory' | '/models' | '/resources' | '/settings'
+  to:
+    | '/'
+    | '/api-keys'
+    | '/memory'
+    | '/models'
+    | '/notes'
+    | '/resources'
+    | '/settings'
   id:
     | '__root__'
     | '/'
     | '/api-keys'
     | '/memory'
     | '/models'
+    | '/notes'
     | '/resources'
     | '/settings'
   fileRoutesById: FileRoutesById
@@ -98,6 +116,7 @@ export interface RootRouteChildren {
   ApiKeysRoute: typeof ApiKeysRoute
   MemoryRoute: typeof MemoryRoute
   ModelsRoute: typeof ModelsRoute
+  NotesRoute: typeof NotesRoute
   ResourcesRoute: typeof ResourcesRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -116,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/resources'
       fullPath: '/resources'
       preLoaderRoute: typeof ResourcesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notes': {
+      id: '/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof NotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/models': {
@@ -154,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysRoute: ApiKeysRoute,
   MemoryRoute: MemoryRoute,
   ModelsRoute: ModelsRoute,
+  NotesRoute: NotesRoute,
   ResourcesRoute: ResourcesRoute,
   SettingsRoute: SettingsRoute,
 }

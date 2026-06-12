@@ -5,6 +5,7 @@ import { vespera, type StatusResponse } from "@/lib/vespera";
 const nav = [
   { to: "/", label: "Chat" },
   { to: "/memory", label: "Memory" },
+  { to: "/notes", label: "Notes" },
   { to: "/api-keys", label: "API Keys" },
   { to: "/models", label: "Models" },
   { to: "/resources", label: "Resources" },

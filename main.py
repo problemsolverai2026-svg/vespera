@@ -63,7 +63,15 @@ def run_periodic_pruning():
 
 
 def run_scheduler():
-    from scheduler import run as scheduler_run
+    from scheduler import run as scheduler_run, register_callback
+    # Wire Telegram delivery so reminders actually get sent.
+    # send_reminder is synchronous (uses asyncio.run internally) — safe to call from callback pool.
+    try:
+        from telegram_bot import send_reminder
+        register_callback(send_reminder)
+        log.info("Telegram reminder delivery registered.")
+    except Exception as e:
+        log.warning("Telegram callback not registered (reminders will fire silently): %s", e)
     scheduler_run(_shutdown)
 
 

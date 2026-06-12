@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS reminders (
 
 CREATE INDEX IF NOT EXISTS idx_reminders_fire ON reminders(fire_at, active);
 
+-- Notes (quick notes via Telegram or chat)
+CREATE TABLE IF NOT EXISTS notes (
+    id         TEXT PRIMARY KEY,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at);
+
 -- Indexes for fast lookup
 CREATE INDEX IF NOT EXISTS idx_memories_layer   ON memories(layer);
 CREATE INDEX IF NOT EXISTS idx_memories_pruned  ON memories(pruned);
