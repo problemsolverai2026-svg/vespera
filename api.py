@@ -29,7 +29,7 @@ from memory.store import (
 from security import check_api_token, get_status as security_status
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB request body limit
+app.config['MAX_CONTENT_LENGTH'] = 55 * 1024 * 1024  # 55 MB — allows photo/video uploads up to 50 MB
 _env_lock     = threading.Lock()
 _cleanup_lock = threading.Lock()
 _pruning_lock = threading.Lock()
@@ -800,6 +800,153 @@ def remove_note(note_id):
         if ok:
             return jsonify({"deleted": True})
         return jsonify({"error": "Note not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────
+# MOBILE APP
+# ─────────────────────────────────────────────
+
+@app.route("/app")
+def mobile_app():
+    """Serve the mobile PWA interface."""
+    from flask import send_file
+    from pathlib import Path as _Path
+    p = _Path(__file__).parent / "mobile_app.html"
+    if not p.exists():
+        return jsonify({"ok": False, "error": "Mobile app not found"}), 404
+    return send_file(str(p), mimetype="text/html")
+
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    return jsonify({
+        "name": "Vespera",
+        "short_name": "Vespera",
+        "start_url": "/app",
+        "display": "standalone",
+        "background_color": "#0f1117",
+        "theme_color": "#6366f1",
+        "icons": []
+    })
+
+
+# ─────────────────────────────────────────────
+# FILE UPLOADS
+# ─────────────────────────────────────────────
+
+@app.route("/api/upload/photo", methods=["POST"])
+def upload_photo():
+    """Accept a multipart photo upload from the mobile UI."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"ok": False, "error": "Empty filename"}), 400
+    caption = _safe_env_value(request.form.get("caption", "").strip(), 500)
+    f.seek(0, 2); size = f.tell(); f.seek(0)
+    if size > 50 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "File too large (max 50 MB)"}), 413
+    try:
+        from photos import init_photos_db, add_photo, PHOTOS_DIR
+        import uuid as _uuid
+        init_photos_db()
+        filename = f"{_uuid.uuid4().hex}.jpg"
+        f.save(str(PHOTOS_DIR / filename))
+        record = add_photo(filename, caption)
+        return jsonify({"ok": True, "photo": record}), 201
+    except Exception as e:
+        app.logger.error("upload_photo failed: %s", e)
+        return jsonify({"ok": False, "error": "Upload failed"}), 500
+
+
+@app.route("/api/upload/video", methods=["POST"])
+def upload_video():
+    """Accept a multipart video upload from the mobile UI."""
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file provided"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"ok": False, "error": "Empty filename"}), 400
+    caption = _safe_env_value(request.form.get("caption", "").strip(), 500)
+    f.seek(0, 2); size = f.tell(); f.seek(0)
+    if size > 50 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "File too large (max 50 MB)"}), 413
+    try:
+        from photos import init_videos_db, add_video, VIDEOS_DIR
+        import uuid as _uuid, os as _os
+        init_videos_db()
+        ext = _os.path.splitext(f.filename)[1].lower()
+        if ext not in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
+            ext = ".mp4"
+        filename = f"{_uuid.uuid4().hex}{ext}"
+        f.save(str(VIDEOS_DIR / filename))
+        record = add_video(filename, caption, 0)
+        return jsonify({"ok": True, "video": record}), 201
+    except Exception as e:
+        app.logger.error("upload_video failed: %s", e)
+        return jsonify({"ok": False, "error": "Upload failed"}), 500
+
+
+# ─────────────────────────────────────────────
+# VIDEOS
+# ─────────────────────────────────────────────
+
+@app.route("/api/videos")
+def get_videos():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 500))
+    except (ValueError, TypeError):
+        limit = 50
+    try:
+        from photos import list_videos, init_videos_db
+        init_videos_db()
+        return jsonify({"ok": True, "videos": list_videos(limit=limit)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/videos/<video_id>/stream")
+def stream_video(video_id):
+    """Serve the video file. No auth — IDs are UUIDs (unguessable)."""
+    import re
+    video_id = video_id.strip().lower()
+    if not re.match(r'^[0-9a-f-]{4,36}$', video_id):
+        return jsonify({"ok": False, "error": "Invalid video id"}), 400
+    from photos import get_video, video_path, init_videos_db
+    init_videos_db()
+    record = get_video(video_id)
+    if not record:
+        return jsonify({"ok": False, "error": "Video not found"}), 404
+    from flask import send_file
+    path = video_path(record["filename"])
+    if not path.exists():
+        return jsonify({"ok": False, "error": "Video file missing"}), 404
+    return send_file(str(path), mimetype="video/mp4")
+
+
+@app.route("/api/videos/<video_id>", methods=["DELETE"])
+def remove_video(video_id):
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    import re
+    video_id = video_id.strip().lower()
+    if not re.match(r'^[0-9a-f-]{4,36}$', video_id):
+        return jsonify({"ok": False, "error": "Invalid video id"}), 400
+    try:
+        from photos import delete_video, init_videos_db
+        init_videos_db()
+        ok = delete_video(video_id)
+        if ok:
+            return jsonify({"deleted": True})
+        return jsonify({"error": "Video not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

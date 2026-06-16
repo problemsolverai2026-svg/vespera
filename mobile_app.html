@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vespera">
+<link rel="manifest" href="/manifest.json">
+<title>Vespera</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0f1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+
+/* Layout */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.tab-content{display:none;flex:1;flex-direction:column;overflow:hidden}
+.tab-content.active{display:flex}
+
+/* Top bar */
+.topbar{padding:env(safe-area-inset-top,12px) 1rem .75rem;background:#131720;border-bottom:1px solid #1e2130;display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.topbar h1{font-size:1.1rem;font-weight:700;color:#6366f1}
+.topbar .status{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0}
+.topbar .status.offline{background:#f87171}
+
+/* Bottom nav */
+nav{display:flex;background:#131720;border-top:1px solid #1e2130;padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0}
+nav button{flex:1;background:none;border:none;color:#64748b;padding:.7rem .25rem .5rem;font-size:.65rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:color .15s}
+nav button .icon{font-size:1.3rem;line-height:1}
+nav button.active{color:#6366f1}
+nav button:active{opacity:.7}
+
+/* Shared scrollable body */
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem}
+
+/* ── CHAT ── */
+#chat-messages{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem;display:flex;flex-direction:column;gap:.75rem}
+.msg{max-width:85%;padding:.65rem .9rem;border-radius:16px;font-size:.92rem;line-height:1.5;word-break:break-word;white-space:pre-wrap}
+.msg.user{align-self:flex-end;background:#6366f1;color:#fff;border-bottom-right-radius:4px}
+.msg.assistant{align-self:flex-start;background:#1e2130;color:#e2e8f0;border-bottom-left-radius:4px}
+.msg.thinking{align-self:flex-start;background:#1e2130;color:#64748b;font-style:italic;border-bottom-left-radius:4px}
+.chat-input-row{display:flex;gap:.5rem;padding:.75rem 1rem;padding-bottom:max(.75rem,env(safe-area-inset-bottom));background:#131720;border-top:1px solid #1e2130;flex-shrink:0}
+.chat-input-row input{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:22px;padding:.6rem 1rem;color:#e2e8f0;font-size:.95rem;outline:none;min-width:0}
+.chat-input-row input:focus{border-color:#6366f1}
+.send-btn{background:#6366f1;border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:1.1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.send-btn:active{opacity:.7}
+
+/* ── NOTES ── */
+.note-add{display:flex;gap:.5rem;margin-bottom:1rem}
+.note-add textarea{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:10px;padding:.65rem .9rem;color:#e2e8f0;font-size:.9rem;resize:none;min-height:70px;outline:none;font-family:inherit}
+.note-add textarea:focus{border-color:#6366f1}
+.note-add button{background:#6366f1;color:#fff;border:none;border-radius:10px;padding:.65rem .9rem;cursor:pointer;font-size:.9rem;align-self:flex-start;white-space:nowrap}
+.note-card{background:#1e2130;border:1px solid #2d3248;border-radius:10px;padding:.85rem 1rem;margin-bottom:.65rem;display:flex;gap:.75rem;align-items:flex-start}
+.note-card .nc-body{flex:1;min-width:0}
+.note-card .nc-text{font-size:.9rem;line-height:1.5;word-break:break-word}
+.note-card .nc-meta{font-size:.72rem;color:#64748b;margin-top:.3rem}
+.note-card .del-btn{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.1rem .3rem;flex-shrink:0}
+.note-card .del-btn:active{color:#f87171}
+
+/* ── MEDIA ── */
+.media-upload{background:#1e2130;border:1px solid #2d3248;border-radius:12px;padding:1rem;margin-bottom:1rem}
+.media-upload .row{display:flex;gap:.75rem;margin-bottom:.75rem}
+.pick-btn{flex:1;background:#1a1f2e;border:1px dashed #2d3248;border-radius:8px;padding:.85rem;color:#94a3b8;font-size:.85rem;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem}
+.pick-btn .pb-icon{font-size:1.4rem}
+.pick-btn:active{background:#232840}
+.caption-row{display:flex;gap:.5rem}
+.caption-row input{flex:1;background:#131720;border:1px solid #2d3248;border-radius:8px;padding:.55rem .85rem;color:#e2e8f0;font-size:.88rem;outline:none}
+.caption-row input:focus{border-color:#6366f1}
+.upload-btn{background:#6366f1;color:#fff;border:none;border-radius:8px;padding:.55rem 1rem;cursor:pointer;font-size:.88rem;white-space:nowrap}
+.upload-btn:disabled{opacity:.4;cursor:not-allowed}
+.media-tabs{display:flex;border-bottom:1px solid #1e2130;margin-bottom:.75rem}
+.media-tab-btn{flex:1;background:none;border:none;color:#64748b;padding:.55rem;font-size:.85rem;cursor:pointer}
+.media-tab-btn.active{color:#6366f1;border-bottom:2px solid #6366f1}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.6rem}
+.media-item{border-radius:8px;overflow:hidden;background:#1e2130;border:1px solid #2d3248;display:flex;flex-direction:column}
+.media-item img,.media-item video{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.media-item .mi-footer{padding:.4rem .6rem;display:flex;justify-content:space-between;align-items:center;gap:.25rem}
+.media-item .mi-caption{font-size:.72rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.media-item .mi-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.85rem;flex-shrink:0}
+.media-item .mi-del:active{color:#f87171}
+.preview-bar{background:#232840;border-radius:8px;padding:.6rem .85rem;margin-bottom:.5rem;font-size:.83rem;color:#94a3b8;display:none}
+.preview-bar.visible{display:block}
+
+/* ── SEARCH ── */
+.search-bar{display:flex;gap:.5rem;margin-bottom:1rem}
+.search-bar input{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:22px;padding:.65rem 1rem;color:#e2e8f0;font-size:.92rem;outline:none}
+.search-bar input:focus{border-color:#6366f1}
+.search-bar button{background:#6366f1;color:#fff;border:none;border-radius:22px;padding:.65rem 1.1rem;cursor:pointer;font-size:.88rem}
+.result-group{margin-bottom:1.25rem}
+.result-group h3{font-size:.8rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;padding-bottom:.35rem;border-bottom:1px solid #1e2130}
+.result-item{background:#1e2130;border-radius:8px;padding:.75rem .9rem;margin-bottom:.5rem;font-size:.88rem;line-height:1.5}
+.result-item .ri-caption{color:#e2e8f0}
+.result-item .ri-meta{font-size:.72rem;color:#64748b;margin-top:.25rem}
+
+/* ── LIGHTBOX ── */
+.lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;flex-direction:column;align-items:center;justify-content:center}
+.lb.open{display:flex}
+.lb img,.lb video{max-width:95vw;max-height:82vh;border-radius:8px;object-fit:contain}
+.lb-close{position:absolute;top:max(1rem,env(safe-area-inset-top));right:1rem;font-size:1.8rem;color:#fff;cursor:pointer;z-index:1000;background:rgba(0,0,0,.4);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+.lb-caption{color:#94a3b8;font-size:.88rem;margin-top:.75rem;text-align:center;padding:0 1rem}
+
+/* ── SHARED ── */
+.empty{text-align:center;color:#475569;padding:2.5rem 1rem;font-size:.9rem}
+.toast{position:fixed;bottom:max(5rem,calc(4rem + env(safe-area-inset-bottom)));left:50%;transform:translateX(-50%);background:#22c55e;color:#fff;padding:.55rem 1.1rem;border-radius:20px;font-size:.85rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:998;white-space:nowrap}
+.toast.error-toast{background:#ef4444}
+.toast.show{opacity:1}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="status" id="status-dot"></span>
+    <h1>♟ Vespera</h1>
+  </div>
+
+  <!-- CHAT TAB -->
+  <div class="tab-content active" id="tab-chat">
+    <div id="chat-messages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Message Vespera…" autocomplete="off" autocorrect="off">
+      <button class="send-btn" id="send-btn" onclick="sendChat()">↑</button>
+    </div>
+  </div>
+
+  <!-- NOTES TAB -->
+  <div class="tab-content" id="tab-notes">
+    <div class="scroll">
+      <div class="note-add">
+        <textarea id="note-input" placeholder="Type a note…" rows="3"></textarea>
+        <button onclick="saveNote()">Save</button>
+      </div>
+      <div id="notes-list"></div>
+    </div>
+  </div>
+
+  <!-- MEDIA TAB -->
+  <div class="tab-content" id="tab-media">
+    <div class="scroll">
+      <div class="media-upload">
+        <div class="row">
+          <div class="pick-btn" onclick="triggerPick('photo-camera')">
+            <span class="pb-icon">📷</span>Camera Photo
+          </div>
+          <div class="pick-btn" onclick="triggerPick('photo-gallery')">
+            <span class="pb-icon">🖼</span>Gallery Photo
+          </div>
+        </div>
+        <div class="row">
+          <div class="pick-btn" onclick="triggerPick('video-camera')">
+            <span class="pb-icon">🎥</span>Camera Video
+          </div>
+          <div class="pick-btn" onclick="triggerPick('video-gallery')">
+            <span class="pb-icon">🎞</span>Gallery Video
+          </div>
+        </div>
+        <div class="preview-bar" id="preview-bar">No file selected</div>
+        <div class="caption-row">
+          <input type="text" id="media-caption" placeholder="Caption (e.g. I-069 valve)…">
+          <button class="upload-btn" id="upload-btn" onclick="uploadMedia()" disabled>Upload</button>
+        </div>
+      </div>
+
+      <div class="media-tabs">
+        <button class="media-tab-btn active" id="mt-photos" onclick="switchMediaTab('photos')">📷 Photos</button>
+        <button class="media-tab-btn" id="mt-videos" onclick="switchMediaTab('videos')">🎥 Videos</button>
+      </div>
+      <div id="media-grid" class="media-grid"></div>
+    </div>
+  </div>
+
+  <!-- SEARCH TAB -->
+  <div class="tab-content" id="tab-search">
+    <div class="scroll">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Find everything about I-069…" autocomplete="off">
+        <button onclick="doSearch()">Search</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav>
+    <button class="active" id="nav-chat" onclick="switchTab('chat')">
+      <span class="icon">💬</span>Chat
+    </button>
+    <button id="nav-notes" onclick="switchTab('notes')">
+      <span class="icon">📝</span>Notes
+    </button>
+    <button id="nav-media" onclick="switchTab('media')">
+      <span class="icon">📷</span>Media
+    </button>
+    <button id="nav-search" onclick="switchTab('search')">
+      <span class="icon">🔍</span>Search
+    </button>
+  </nav>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lb" id="lb">
+  <div class="lb-close" onclick="closeLb()">✕</div>
+  <img id="lb-img" src="" style="display:none">
+  <video id="lb-vid" src="" controls style="display:none"></video>
+  <div class="lb-caption" id="lb-caption"></div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="photo-camera" accept="image/*" capture="environment" onchange="fileChosen(this,'photo')">
+<input type="file" id="photo-gallery" accept="image/*" onchange="fileChosen(this,'photo')">
+<input type="file" id="video-camera" accept="video/*" capture="environment" onchange="fileChosen(this,'video')">
+<input type="file" id="video-gallery" accept="video/*" onchange="fileChosen(this,'video')">
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let activeTab = 'chat';
+let activeMediaTab = 'photos';
+let pendingFile = null;
+let pendingType = null; // 'photo' | 'video'
+let chatMessages = [];
+
+// ── Auth token ──────────────────────────────────────────
+function getToken() { return localStorage.getItem('vespera_token') || ''; }
+function authHeaders(extra) {
+  const t = getToken();
+  const h = { 'Content-Type': 'application/json', ...(extra||{}) };
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+function authHeadersForm() {
+  const t = getToken();
+  const h = {};
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+
+// ── API health check ────────────────────────────────────
+async function checkStatus() {
+  try {
+    const r = await fetch('/health', { signal: AbortSignal.timeout(4000) });
+    document.getElementById('status-dot').className = 'status' + (r.ok ? '' : ' offline');
+  } catch { document.getElementById('status-dot').className = 'status offline'; }
+}
+checkStatus();
+setInterval(checkStatus, 30000);
+
+// ── Tab switching ───────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  activeTab = name;
+  if (name === 'notes') loadNotes();
+  if (name === 'media') loadMedia();
+}
+
+// ── Toast ───────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast' + (isError ? ' error-toast' : '') + ' show';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Utility ─────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+       + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+
+// ── CHAT ────────────────────────────────────────────────
+function renderChat() {
+  const el = document.getElementById('chat-messages');
+  if (!chatMessages.length) {
+    el.innerHTML = '<div class="empty">Say something to Vespera…</div>';
+    return;
+  }
+  el.innerHTML = chatMessages.map(m =>
+    `<div class="msg ${m.role}${m.thinking?' thinking':''}">${esc(m.content)}</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendChat() {
+  const inp = document.getElementById('chat-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  inp.disabled = true;
+  document.getElementById('send-btn').disabled = true;
+
+  chatMessages.push({ role: 'user', content: msg });
+  chatMessages.push({ role: 'assistant', content: 'Thinking…', thinking: true });
+  renderChat();
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ message: msg })
+    });
+    if (r.status === 401) {
+      const tok = prompt('Vespera requires an API token:');
+      if (tok) { localStorage.setItem('vespera_token', tok.trim()); toast('Token saved'); }
+      chatMessages.pop(); chatMessages.pop();
+      renderChat(); return;
+    }
+    const data = await r.json();
+    chatMessages.pop(); // remove thinking
+    chatMessages.push({ role: 'assistant', content: data.response || '(no response)' });
+  } catch (e) {
+    chatMessages.pop();
+    chatMessages.push({ role: 'assistant', content: 'Error reaching Vespera. Is it running?' });
+  }
+  renderChat();
+  inp.disabled = false;
+  document.getElementById('send-btn').disabled = false;
+  inp.focus();
+}
+
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+renderChat();
+
+// ── NOTES ───────────────────────────────────────────────
+async function loadNotes() {
+  const el = document.getElementById('notes-list');
+  try {
+    const r = await fetch('/api/notes', { headers: authHeaders({'Content-Type': undefined}) });
+    const notes = await r.json();
+    if (!notes.length) { el.innerHTML = '<div class="empty">No notes yet.</div>'; return; }
+    el.innerHTML = notes.map(n => `
+      <div class="note-card">
+        <div class="nc-body">
+          <div class="nc-text">${esc(n.content)}</div>
+          <div class="nc-meta">${fmtDate(n.created_at)} · ${n.id.slice(0,8)}</div>
+        </div>
+        <button class="del-btn" onclick="deleteNote('${n.id}')">✕</button>
+      </div>`).join('');
+  } catch { el.innerHTML = '<div class="empty">Could not load notes.</div>'; }
+}
+
+async function saveNote() {
+  const inp = document.getElementById('note-input');
+  const content = inp.value.trim();
+  if (!content) return;
+  try {
+    const r = await fetch('/api/notes', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ content })
+    });
+    if (r.ok) { inp.value = ''; toast('Note saved'); loadNotes(); }
+    else toast('Failed to save', true);
+  } catch { toast('Error', true); }
+}
+
+async function deleteNote(id) {
+  try {
+    await fetch('/api/notes/' + id, { method: 'DELETE', headers: authHeadersForm() });
+    toast('Deleted');
+    loadNotes();
+  } catch { toast('Error', true); }
+}
+
+document.getElementById('note-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.metaKey) saveNote();
+});
+
+// ── MEDIA ───────────────────────────────────────────────
+function triggerPick(inputId) {
+  pendingFile = null; pendingType = null;
+  document.getElementById('upload-btn').disabled = true;
+  document.getElementById('preview-bar').className = 'preview-bar';
+  document.getElementById(inputId).click();
+}
+
+function fileChosen(input, type) {
+  const f = input.files[0];
+  if (!f) return;
+  pendingFile = f;
+  pendingType = type;
+  const bar = document.getElementById('preview-bar');
+  const mb = (f.size / 1048576).toFixed(1);
+  if (f.size > 50 * 1048576) {
+    bar.textContent = `⚠️ ${f.name} (${mb} MB) — too large (max 50 MB)`;
+    bar.className = 'preview-bar visible';
+    document.getElementById('upload-btn').disabled = true;
+    return;
+  }
+  bar.textContent = `${type === 'photo' ? '📷' : '🎥'} ${f.name} (${mb} MB)`;
+  bar.className = 'preview-bar visible';
+  document.getElementById('upload-btn').disabled = false;
+  input.value = '';
+}
+
+async function uploadMedia() {
+  if (!pendingFile) return;
+  const caption = document.getElementById('media-caption').value.trim();
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', pendingFile);
+  fd.append('caption', caption);
+  const endpoint = pendingType === 'photo' ? '/api/upload/photo' : '/api/upload/video';
+
+  try {
+    const r = await fetch(endpoint, { method: 'POST', headers: authHeadersForm(), body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      toast('Saved!');
+      document.getElementById('media-caption').value = '';
+      document.getElementById('preview-bar').className = 'preview-bar';
+      pendingFile = null; pendingType = null;
+      loadMedia();
+    } else toast(data.error || 'Upload failed', true);
+  } catch { toast('Upload error', true); }
+
+  btn.textContent = 'Upload';
+  btn.disabled = false;
+}
+
+function switchMediaTab(t) {
+  activeMediaTab = t;
+  document.getElementById('mt-photos').className = 'media-tab-btn' + (t==='photos'?' active':'');
+  document.getElementById('mt-videos').className = 'media-tab-btn' + (t==='videos'?' active':'');
+  loadMedia();
+}
+
+async function loadMedia() {
+  const grid = document.getElementById('media-grid');
+  grid.innerHTML = '<div class="empty" style="grid-column:1/-1">Loading…</div>';
+  try {
+    if (activeMediaTab === 'photos') {
+      const r = await fetch('/api/photos', { headers: authHeadersForm() });
+      const data = await r.json();
+      const photos = data.photos || [];
+      if (!photos.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No photos yet.</div>'; return; }
+      grid.innerHTML = photos.map(p => `
+        <div class="media-item">
+          <img src="/api/photos/${p.id}/image" loading="lazy"
+               onclick="openLb('photo','${p.id}','${esc(p.caption||'')}')">
+          <div class="mi-footer">
+            <span class="mi-caption">${esc(p.caption||'no caption')}</span>
+            <button class="mi-del" onclick="deleteMedia('photo','${p.id}')">✕</button>
+          </div>
+        </div>`).join('');
+    } else {
+      const r = await fetch('/api/videos', { headers: authHeadersForm() });
+      const data = await r.json();
+      const videos = data.videos || [];
+      if (!videos.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1">No videos yet.</div>'; return; }
+      grid.innerHTML = videos.map(v => `
+        <div class="media-item">
+          <video src="/api/videos/${v.id}/stream" preload="metadata"
+                 onclick="openLb('video','${v.id}','${esc(v.caption||'')}')"></video>
+          <div class="mi-footer">
+            <span class="mi-caption">${esc(v.caption||'no caption')}</span>
+            <button class="mi-del" onclick="deleteMedia('video','${v.id}')">✕</button>
+          </div>
+        </div>`).join('');
+    }
+  } catch { grid.innerHTML = '<div class="empty" style="grid-column:1/-1">Could not load media.</div>'; }
+}
+
+async function deleteMedia(type, id) {
+  if (!confirm('Delete this ' + type + '?')) return;
+  const url = type === 'photo' ? `/api/photos/${id}` : `/api/videos/${id}`;
+  await fetch(url, { method: 'DELETE', headers: authHeadersForm() });
+  toast('Deleted');
+  loadMedia();
+}
+
+// ── LIGHTBOX ─────────────────────────────────────────────
+function openLb(type, id, caption) {
+  const lb = document.getElementById('lb');
+  const img = document.getElementById('lb-img');
+  const vid = document.getElementById('lb-vid');
+  document.getElementById('lb-caption').textContent = caption || '';
+  if (type === 'photo') {
+    img.src = '/api/photos/' + id + '/image'; img.style.display = '';
+    vid.style.display = 'none'; vid.pause();
+  } else {
+    vid.src = '/api/videos/' + id + '/stream'; vid.style.display = ''; vid.load();
+    img.style.display = 'none';
+  }
+  lb.classList.add('open');
+}
+function closeLb() {
+  document.getElementById('lb').classList.remove('open');
+  const vid = document.getElementById('lb-vid');
+  vid.pause(); vid.src = '';
+}
+document.getElementById('lb').addEventListener('click', e => {
+  if (e.target.id === 'lb') closeLb();
+});
+
+// ── SEARCH ──────────────────────────────────────────────
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q) return;
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<div class="empty">Searching…</div>';
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ message: 'find everything about ' + q })
+    });
+    const data = await r.json();
+    const text = data.response || '';
+    if (!text || text.toLowerCase().includes('nothing found')) {
+      el.innerHTML = `<div class="empty">Nothing found for "${esc(q)}"</div>`;
+      return;
+    }
+    // Render the response as formatted text
+    el.innerHTML = `<div class="result-item" style="white-space:pre-wrap">${esc(text)}</div>`;
+  } catch { el.innerHTML = '<div class="empty">Search failed — is Vespera running?</div>'; }
+}
+
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+</script>
+</body>
+</html>
