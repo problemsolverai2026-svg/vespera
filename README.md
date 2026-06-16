@@ -38,9 +38,9 @@ It's local-first by design. Your data stays on your machine. Cloud AI is optiona
 - A Mac or Linux computer that stays on
 - [Python 3.10+](https://www.python.org/downloads/)
 - [Node.js 18+](https://nodejs.org) — for the web UI
-- [Ollama](https://ollama.ai) — runs the local AI model
 
 ### Optional (all free)
+- [Ollama](https://ollama.ai) — runs the local AI model; if not installed, Vespera falls back to cloud-only mode automatically
 - [Telegram](https://telegram.org) — to text Vespera from your phone
 - [Groq API key](https://console.groq.com) — free cloud AI for smarter responses
 - [Brave Search API key](https://brave.com/search/api/) — better web search (2,000 free searches/month)
