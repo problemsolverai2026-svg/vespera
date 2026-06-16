@@ -377,7 +377,7 @@ async function editCaption(type, id, currentCaption) {
       body: JSON.stringify({ caption: newCaption })
     });
     const d = await r.json();
-    if (d.ok) { loadMediaGrid(); }
+    if (d.ok) { loadMedia(); }
     else { alert('Could not update caption.'); }
   } catch(e) { alert('Could not update caption.'); }
 }
