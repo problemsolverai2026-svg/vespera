@@ -118,6 +118,20 @@ def delete_photo(photo_id: str) -> bool:
         return deleted
 
 
+def search_photos(query: str, limit: int = 20) -> list:
+    """Search photos by caption keyword (case-insensitive)."""
+    query = query.strip()
+    if not query:
+        return []
+    limit = max(1, min(int(limit), 500))
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM photos WHERE LOWER(caption) LIKE LOWER(?) ORDER BY created_at DESC LIMIT ?",
+            (f"%{query}%", limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def photo_path(filename: str) -> Path:
     """Return the absolute path to a stored photo file."""
     return PHOTOS_DIR / filename

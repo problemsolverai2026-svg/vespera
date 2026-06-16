@@ -517,6 +517,19 @@ _PHOTO_DELETE_CHECK = re.compile(
     r"\b(?:delete|remove|erase)\s+photo\b",
     re.IGNORECASE,
 )
+_PHOTO_SEARCH_CHECK = re.compile(
+    r"\b(?:find|search|show|look\s*up)\s+photos?\s+(?:of|for|about|with|tagged|on)?\s*(.+)"
+    r"|\bsearch\s+(?:for\s+)?photos?\s+(?:of|about|with)?\s*(.+)",
+    re.IGNORECASE,
+)
+# Unified cross-type search (notes + photos)
+_UNIFIED_SEARCH_CHECK = re.compile(
+    r"\bfind\s+(?:everything|all)\s+(?:about|on|for|related\s+to)\s+(.+)"
+    r"|\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for)\s+(.+)"
+    r"|\blook\s+up\s+(.+)"
+    r"|\bsearch\s+(?:for\s+)?(?:everything\s+(?:about|on)\s+)?(.+)\s+(?:in\s+(?:notes?|photos?|everything))",
+    re.IGNORECASE,
+)
 
 
 def _handle_reminder_locally(message: str) -> dict | None:
@@ -637,6 +650,85 @@ def _handle_photo_locally(message: str) -> dict | None:
     return None
 
 
+def _extract_query(message: str, pattern: re.Pattern) -> str:
+    """Extract the search query from a regex match (first non-None group)."""
+    m = pattern.search(message)
+    if not m:
+        return ""
+    return next((g.strip() for g in m.groups() if g), "").strip()
+
+
+def _handle_photo_search(message: str) -> dict | None:
+    """Search photos by caption keyword."""
+    if not _PHOTO_SEARCH_CHECK.search(message):
+        return None
+    query = _extract_query(message, _PHOTO_SEARCH_CHECK)
+    if not query:
+        return {"response": "What do you want to search for? Try: 'find photos of I-069'", "handled_by": "local-photo", "complexity": 0.0}
+    from photos import search_photos, init_photos_db
+    init_photos_db()
+    results = search_photos(query)
+    if not results:
+        return {"response": f"No photos found matching '{query}'.", "handled_by": "local-photo", "complexity": 0.0}
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+    lines = []
+    for i, p in enumerate(results, 1):
+        try:
+            dt = datetime.fromisoformat(p["created_at"]).astimezone(tz)
+            date_str = dt.strftime("%b %d %I:%M %p")
+        except Exception:
+            date_str = ""
+        caption = p.get("caption") or "(no caption)"
+        lines.append(f"{i}. [{p['id'][:8]}] {caption}  ({date_str})")
+    return {"response": f"\U0001f4f7 Photos matching '{query}':\n" + "\n".join(lines), "handled_by": "local-photo", "complexity": 0.0}
+
+
+def _handle_unified_search(message: str) -> dict | None:
+    """Search across notes AND photos for a keyword — returns combined results."""
+    if not _UNIFIED_SEARCH_CHECK.search(message):
+        return None
+    query = _extract_query(message, _UNIFIED_SEARCH_CHECK)
+    if not query:
+        return None  # fall through to normal routing
+    from notes import search_notes, init_notes_db
+    from photos import search_photos, init_photos_db
+    init_notes_db()
+    init_photos_db()
+    notes = search_notes(query, limit=10)
+    photos = search_photos(query, limit=10)
+    if not notes and not photos:
+        return {"response": f"Nothing found matching '{query}' in notes or photos.", "handled_by": "local-search", "complexity": 0.0}
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+    parts = []
+    if notes:
+        note_lines = []
+        for i, n in enumerate(notes, 1):
+            try:
+                dt = datetime.fromisoformat(n["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            note_lines.append(f"  {i}. [{n['id'][:8]}] {n['content']}  ({date_str})")
+        parts.append("\U0001f4dd Notes (" + str(len(notes)) + "):\n" + "\n".join(note_lines))
+    if photos:
+        photo_lines = []
+        for i, p in enumerate(photos, 1):
+            try:
+                dt = datetime.fromisoformat(p["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            caption = p.get("caption") or "(no caption)"
+            photo_lines.append(f"  {i}. [{p['id'][:8]}] {caption}  ({date_str})")
+        parts.append("\U0001f4f7 Photos (" + str(len(photos)) + "):\n" + "\n".join(photo_lines))
+    header = f"Everything I have on '{query}':"
+    return {"response": header + "\n\n" + "\n\n".join(parts), "handled_by": "local-search", "complexity": 0.0}
+
+
 def _route_message(message: str, memories: str, recent: str) -> dict:
     """Core routing logic — returns a result dict without re-engagement suffix."""
 
@@ -649,6 +741,16 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
     photo_result = _handle_photo_locally(message)
     if photo_result is not None:
         return photo_result
+
+    # Unified cross-type search (notes + photos)
+    unified_result = _handle_unified_search(message)
+    if unified_result is not None:
+        return unified_result
+
+    # Photo-only caption search
+    photo_search_result = _handle_photo_search(message)
+    if photo_search_result is not None:
+        return photo_search_result
 
     # Reminder requests — handle locally before complexity scoring
     reminder_result = _handle_reminder_locally(message)
