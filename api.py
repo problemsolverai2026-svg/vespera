@@ -995,7 +995,8 @@ def photos_ui():
               cursor: pointer; display: block; }
   .card-body { padding: .6rem .75rem; flex: 1; }
   .caption { font-size: .85rem; line-height: 1.4; word-break: break-word;
-             color: #e2e8f0; margin-bottom: .3rem; }
+             color: #e2e8f0; margin-bottom: .3rem; cursor: pointer; text-decoration: underline dotted #475569; }
+  .caption.empty { cursor: pointer; text-decoration: underline dotted #475569; }
   .caption.empty { color: #64748b; font-style: italic; }
   .meta { font-size: .7rem; color: #64748b; }
   .delete-btn { display: block; width: 100%; background: #2d1f1f; border: none;
@@ -1089,8 +1090,8 @@ def photos_ui():
       card.className = \'card\';
       const imgSrc = API + \'/api/photos/\' + p.id + \'/image\';
       const captionHtml = p.caption
-        ? `<div class="caption">${escHtml(p.caption)}</div>`
-        : `<div class="caption empty">(no caption)</div>`;
+        ? `<div class="caption" onclick="editCap('${p.id}','${escHtml(p.caption)}')" title="Tap to edit">${escHtml(p.caption)}</div>`
+        : `<div class="caption empty" onclick="editCap('${p.id}','')" title="Tap to add caption">(tap to add caption)</div>`;
       card.innerHTML = `
         <img src="${imgSrc}" loading="lazy" alt="photo" onclick="openLb(\'${imgSrc}\')" />
         <div class="card-body">${captionHtml}<div class="meta">${dateStr}</div></div>
@@ -1099,6 +1100,18 @@ def photos_ui():
     });
   }
   function escHtml(s) { return s.replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\'); }
+  async function editCap(id, current) {
+    const val = prompt(\'Edit caption:\', current);
+    if (val === null) return;
+    const r = await fetch(API + \'/api/photos/\' + id + \'/caption\', {
+      method: \'PATCH\',
+      headers: {\'Content-Type\':\'application/json\'},
+      body: JSON.stringify({caption: val})
+    });
+    const d = await r.json();
+    if (d.ok) { toast(\'✅ Caption saved\'); load(); }
+    else toast(\'❌ Failed\');
+  }
   async function del(id) {
     if (!confirm(\'Delete this photo?\')) return;
     await fetch(API + \'/api/photos/\' + id, {method:\'DELETE\'});
@@ -1153,6 +1166,27 @@ def serve_photo(photo_id):
     if not path.exists():
         return jsonify({"ok": False, "error": "Photo file missing"}), 404
     return send_file(str(path), mimetype="image/jpeg")
+
+
+@app.route("/api/photos/<photo_id>/caption", methods=["PATCH"])
+def update_photo_caption(photo_id):
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    import re
+    photo_id = photo_id.strip().lower()
+    if not re.match(r'^[0-9a-f-]{4,36}$', photo_id):
+        return jsonify({"ok": False, "error": "Invalid photo id"}), 400
+    data = request.get_json(silent=True) or {}
+    caption = str(data.get("caption", "")).strip()[:500]
+    try:
+        from photos import update_photo_caption as _update_caption, init_photos_db
+        init_photos_db()
+        ok = _update_caption(photo_id, caption)
+        if ok:
+            return jsonify({"ok": True})
+        return jsonify({"error": "Photo not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/photos/<photo_id>", methods=["DELETE"])

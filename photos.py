@@ -118,6 +118,19 @@ def delete_photo(photo_id: str) -> bool:
         return deleted
 
 
+def update_photo_caption(photo_id: str, caption: str) -> bool:
+    """Update the caption for an existing photo. Returns True if found and updated."""
+    photo_id = photo_id.strip()
+    caption = caption.strip()
+    with _lock:
+        with _connect() as conn:
+            if len(photo_id) >= 36:
+                cur = conn.execute("UPDATE photos SET caption = ? WHERE id = ?", (caption, photo_id))
+            else:
+                cur = conn.execute("UPDATE photos SET caption = ? WHERE id LIKE ?", (caption, photo_id + "%"))
+            return cur.rowcount > 0
+
+
 def search_photos(query: str, limit: int = 20) -> list:
     """Search photos by caption keyword (case-insensitive)."""
     query = query.strip()

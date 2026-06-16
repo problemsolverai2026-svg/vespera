@@ -75,7 +75,7 @@ nav button:active{opacity:.7}
 .media-item{border-radius:8px;overflow:hidden;background:#1e2130;border:1px solid #2d3248;display:flex;flex-direction:column}
 .media-item img,.media-item video{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
 .media-item .mi-footer{padding:.4rem .6rem;display:flex;justify-content:space-between;align-items:center;gap:.25rem}
-.media-item .mi-caption{font-size:.72rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.media-item .mi-caption{font-size:.72rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer;text-decoration:underline dotted #475569}
 .media-item .mi-del{background:#2d1f1f;border:none;border-radius:4px;color:#f87171;cursor:pointer;font-size:.85rem;flex-shrink:0;padding:.15rem .4rem;font-weight:600}
 .media-item .mi-del:active{color:#f87171}
 .preview-bar{background:#232840;border-radius:8px;padding:.6rem .85rem;margin-bottom:.5rem;font-size:.83rem;color:#94a3b8;display:none}
@@ -366,6 +366,22 @@ async function saveNote() {
   } catch { toast('Error', true); }
 }
 
+async function editCaption(type, id, currentCaption) {
+  const newCaption = prompt('Edit caption:', currentCaption);
+  if (newCaption === null) return; // cancelled
+  const url = type === 'photo' ? `/api/photos/${id}/caption` : `/api/videos/${id}/caption`;
+  try {
+    const r = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeadersForm() },
+      body: JSON.stringify({ caption: newCaption })
+    });
+    const d = await r.json();
+    if (d.ok) { loadMediaGrid(); }
+    else { alert('Could not update caption.'); }
+  } catch(e) { alert('Could not update caption.'); }
+}
+
 async function deleteNote(id) {
   try {
     await fetch('/api/notes/' + id, { method: 'DELETE', headers: authHeadersForm() });
@@ -453,7 +469,7 @@ async function loadMedia() {
           <img src="/api/photos/${p.id}/image" loading="lazy"
                onclick="openLb('photo','${p.id}','${esc(p.caption||'')}')">
           <div class="mi-footer">
-            <span class="mi-caption">${esc(p.caption||'no caption')}</span>
+            <span class="mi-caption" onclick="editCaption('photo','${p.id}','${esc(p.caption||'')}')" title="Tap to edit caption">${esc(p.caption||'no caption')}</span>
             <button class="mi-del" onclick="deleteMedia('photo','${p.id}')">✕</button>
           </div>
         </div>`).join('');
