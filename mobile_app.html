@@ -76,7 +76,7 @@ nav button:active{opacity:.7}
 .media-item img,.media-item video{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
 .media-item .mi-footer{padding:.4rem .6rem;display:flex;justify-content:space-between;align-items:center;gap:.25rem}
 .media-item .mi-caption{font-size:.72rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.media-item .mi-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.85rem;flex-shrink:0}
+.media-item .mi-del{background:#2d1f1f;border:none;border-radius:4px;color:#f87171;cursor:pointer;font-size:.85rem;flex-shrink:0;padding:.15rem .4rem;font-weight:600}
 .media-item .mi-del:active{color:#f87171}
 .preview-bar{background:#232840;border-radius:8px;padding:.6rem .85rem;margin-bottom:.5rem;font-size:.83rem;color:#94a3b8;display:none}
 .preview-bar.visible{display:block}
@@ -157,7 +157,7 @@ input[type=file]{display:none}
           </div>
         </div>
         <div class="preview-bar" id="preview-bar">No file selected</div>
-        <div class="caption-row">
+        <div style="font-size:.78rem;color:#94a3b8;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em">Caption (optional)</div><div class="caption-row">
           <input type="text" id="media-caption" placeholder="Caption (e.g. I-069 valve)…">
           <button class="upload-btn" id="upload-btn" onclick="uploadMedia()" disabled>Upload</button>
         </div>
