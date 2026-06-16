@@ -157,6 +157,11 @@ def main():
 
     init_db()
 
+    from notes import init_notes_db
+    init_notes_db()
+    from photos import init_photos_db
+    init_photos_db()
+
     if "--test" in sys.argv:
         try:
             run_test()

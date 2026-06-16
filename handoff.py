@@ -508,6 +508,16 @@ _NOTE_DELETE_CHECK = re.compile(
     re.IGNORECASE,
 )
 
+# Photo command patterns
+_PHOTO_LIST_CHECK = re.compile(
+    r"\b(?:show|list|my|get|what(?:'s| are)?)\s+(?:my\s+)?photos?\b",
+    re.IGNORECASE,
+)
+_PHOTO_DELETE_CHECK = re.compile(
+    r"\b(?:delete|remove|erase)\s+photo\b",
+    re.IGNORECASE,
+)
+
 
 def _handle_reminder_locally(message: str) -> dict | None:
     """Intercept reminder requests and handle them with the local model. Returns result dict or None."""
@@ -591,6 +601,42 @@ def _handle_note_locally(message: str) -> dict | None:
     return None
 
 
+def _handle_photo_locally(message: str) -> dict | None:
+    """Intercept photo listing/deletion requests. Returns result dict or None."""
+    # List photos
+    if _PHOTO_LIST_CHECK.search(message):
+        from photos import list_photos, init_photos_db
+        init_photos_db()
+        photos = list_photos(limit=20)
+        if not photos:
+            return {"response": "No photos saved yet. Send a photo via Telegram to store one.", "handled_by": "local-photo", "complexity": 0.0}
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, timezone
+        tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+        lines = []
+        for i, p in enumerate(photos, 1):
+            try:
+                dt = datetime.fromisoformat(p["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            caption = f" — {p['caption']}" if p.get("caption") else ""
+            lines.append(f"{i}. [{p['id'][:8]}]{caption}  ({date_str})")
+        return {"response": "\U0001f4f7 Your photos:\n" + "\n".join(lines), "handled_by": "local-photo", "complexity": 0.0}
+
+    # Delete a photo
+    if _PHOTO_DELETE_CHECK.search(message):
+        match = re.search(r'[0-9a-f-]{4,}', message, re.IGNORECASE)
+        if match:
+            from photos import delete_photo, init_photos_db
+            init_photos_db()
+            ok = delete_photo(match.group(0))
+            return {"response": "Photo deleted." if ok else f"No photo found with id '{match.group(0)}'.", "handled_by": "local-photo", "complexity": 0.0}
+        return {"response": "Which photo? Say 'my photos' to see IDs, then 'delete photo <id>'.", "handled_by": "local-photo", "complexity": 0.0}
+
+    return None
+
+
 def _route_message(message: str, memories: str, recent: str) -> dict:
     """Core routing logic — returns a result dict without re-engagement suffix."""
 
@@ -598,6 +644,11 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
     note_result = _handle_note_locally(message)
     if note_result is not None:
         return note_result
+
+    # Photo listing/deletion — handle locally before complexity scoring
+    photo_result = _handle_photo_locally(message)
+    if photo_result is not None:
+        return photo_result
 
     # Reminder requests — handle locally before complexity scoring
     reminder_result = _handle_reminder_locally(message)

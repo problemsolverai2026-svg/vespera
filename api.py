@@ -804,6 +804,179 @@ def remove_note(note_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ─────────────────────────────────────────────
+# PHOTOS
+# ─────────────────────────────────────────────
+
+@app.route("/photos")
+def photos_ui():
+    """Simple photo viewer page — for local use via browser."""
+    return '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vespera Photos</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;
+       display: flex; align-items: center; gap: .5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: 1rem; }
+  .card { background: #1e2130; border: 1px solid #2d3248; border-radius: 10px;
+          overflow: hidden; display: flex; flex-direction: column; }
+  .card img { width: 100%; aspect-ratio: 4/3; object-fit: cover;
+              cursor: pointer; display: block; }
+  .card-body { padding: .75rem 1rem; flex: 1; }
+  .caption { font-size: .9rem; line-height: 1.4; word-break: break-word;
+             color: #e2e8f0; margin-bottom: .4rem; }
+  .caption.empty { color: #64748b; font-style: italic; }
+  .meta { font-size: .72rem; color: #64748b; }
+  .actions { display: flex; justify-content: flex-end; padding: .5rem .75rem;
+             border-top: 1px solid #2d3248; }
+  .delete-btn { background: none; border: none; color: #64748b; cursor: pointer;
+                font-size: .85rem; padding: .2rem .5rem; border-radius: 4px; }
+  .delete-btn:hover { color: #f87171; background: #2d1f1f; }
+  .empty { text-align: center; color: #64748b; padding: 4rem;
+           font-size: .95rem; }
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #22c55e;
+           color: #fff; padding: .6rem 1rem; border-radius: 8px;
+           font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  /* Lightbox */
+  .lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
+        align-items:center; justify-content:center; z-index:1000; }
+  .lb.open { display:flex; }
+  .lb img { max-width:92vw; max-height:92vh; border-radius:8px;
+             box-shadow:0 4px 32px rgba(0,0,0,.6); }
+  .lb-close { position:absolute; top:1.2rem; right:1.5rem; font-size:2rem;
+              color:#fff; cursor:pointer; user-select:none; }
+</style>
+</head>
+<body>
+<h1>📷 Vespera Photos</h1>
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty" style="display:none">No photos yet. Send one via Telegram.</div>
+<div class="toast" id="toast"></div>
+<div class="lb" id="lb"><span class="lb-close" onclick="closeLb()">✕</span><img id="lb-img" src="" /></div>
+<script>
+  const API = \'\';
+  async function load() {
+    const r = await fetch(API + \'/api/photos\');
+    const data = await r.json();
+    const photos = data.photos || [];
+    const grid = document.getElementById(\'grid\');
+    const empty = document.getElementById(\'empty\');
+    grid.innerHTML = \'\';
+    if (!photos.length) { empty.style.display = \'\'; return; }
+    empty.style.display = \'none\';
+    photos.forEach(p => {
+      const d = new Date(p.created_at);
+      const dateStr = d.toLocaleDateString(\'en-US\', {month:\'short\',day:\'numeric\'})
+                    + \' \' + d.toLocaleTimeString(\'en-US\',{hour:\'numeric\',minute:\'2-digit\'});
+      const card = document.createElement(\'div\');
+      card.className = \'card\';
+      const imgSrc = API + \'/api/photos/\' + p.id + \'/image\';
+      const captionHtml = p.caption
+        ? `<div class="caption">${escHtml(p.caption)}</div>`
+        : `<div class="caption empty">(no caption)</div>`;
+      card.innerHTML = `
+        <img src="${imgSrc}" loading="lazy" alt="photo" onclick="openLb(\'${imgSrc}\')" />
+        <div class="card-body">
+          ${captionHtml}
+          <div class="meta">${dateStr} &nbsp;·&nbsp; ${p.id.slice(0,8)}</div>
+        </div>
+        <div class="actions">
+          <button class="delete-btn" onclick="del(\'${p.id}\')">Delete</button>
+        </div>`;
+      grid.appendChild(card);
+    });
+  }
+  function escHtml(s) {
+    return s.replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');
+  }
+  async function del(id) {
+    if (!confirm(\'Delete this photo?\')) return;
+    await fetch(API + \'/api/photos/\' + id, {method:\'DELETE\'});
+    toast(\'Deleted\');
+    load();
+  }
+  function openLb(src) {
+    document.getElementById(\'lb-img\').src = src;
+    document.getElementById(\'lb\').classList.add(\'open\');
+  }
+  function closeLb() { document.getElementById(\'lb\').classList.remove(\'open\'); }
+  document.getElementById(\'lb\').addEventListener(\'click\', e => { if (e.target.id===\'lb\') closeLb(); });
+  function toast(msg) {
+    const t = document.getElementById(\'toast\');
+    t.textContent = msg; t.classList.add(\'show\');
+    setTimeout(() => t.classList.remove(\'show\'), 2000);
+  }
+  load();
+</script>
+</body>
+</html>
+'''
+
+
+@app.route("/api/photos")
+def get_photos():
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    try:
+        limit_raw = request.args.get("limit", 50)
+        try:
+            limit = max(1, min(int(limit_raw), 500))
+        except (ValueError, TypeError):
+            limit = 50
+        from photos import list_photos, init_photos_db
+        init_photos_db()
+        return jsonify({"ok": True, "photos": list_photos(limit=limit)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/photos/<photo_id>/image")
+def serve_photo(photo_id):
+    """Serve the photo image file. No auth — IDs are UUIDs (unguessable)."""
+    import re
+    photo_id = photo_id.strip().lower()
+    if not re.match(r'^[0-9a-f-]{4,36}$', photo_id):
+        return jsonify({"ok": False, "error": "Invalid photo id"}), 400
+    from photos import get_photo, photo_path, init_photos_db
+    init_photos_db()
+    record = get_photo(photo_id)
+    if not record:
+        return jsonify({"ok": False, "error": "Photo not found"}), 404
+    from flask import send_file
+    path = photo_path(record["filename"])
+    if not path.exists():
+        return jsonify({"ok": False, "error": "Photo file missing"}), 404
+    return send_file(str(path), mimetype="image/jpeg")
+
+
+@app.route("/api/photos/<photo_id>", methods=["DELETE"])
+def remove_photo(photo_id):
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    import re
+    photo_id = photo_id.strip().lower()
+    if not re.match(r'^[0-9a-f-]{4,36}$', photo_id):
+        return jsonify({"ok": False, "error": "Invalid photo id"}), 400
+    try:
+        from photos import delete_photo, init_photos_db
+        init_photos_db()
+        ok = delete_photo(photo_id)
+        if ok:
+            return jsonify({"deleted": True})
+        return jsonify({"error": "Photo not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/backup", methods=["POST"])
 def run_backup():
     auth_err = require_auth()

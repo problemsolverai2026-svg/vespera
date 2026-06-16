@@ -241,9 +241,45 @@ def run():
     else:
         log.info("main.py is running — skipping local scheduler to avoid duplicates.")
 
+    async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Save a photo sent via Telegram, with optional caption."""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or str(user_id)
+        if not is_allowed(user_id):
+            log.warning(f"Blocked photo from: {username} ({user_id})")
+            await update.message.reply_text("Access denied.")
+            return
+
+        caption = (update.message.caption or "").strip()
+        log.info(f"Photo from {username}: caption={caption[:60]!r}")
+
+        try:
+            from photos import init_photos_db, add_photo, PHOTOS_DIR
+            import uuid as _uuid
+            init_photos_db()
+
+            # Highest-resolution version is the last element
+            photo = update.message.photo[-1]
+            tg_file = await context.bot.get_file(photo.file_id)
+
+            filename = f"{_uuid.uuid4().hex}.jpg"
+            dest = PHOTOS_DIR / filename
+            await tg_file.download_to_drive(str(dest))
+
+            record = add_photo(filename, caption)
+            short_id = record["id"][:8]
+            caption_line = f"\nCaption: {caption}" if caption else ""
+            await update.message.reply_text(
+                f"\U0001f4f7 Photo saved!{caption_line}\nID: {short_id}\n\nSay \"my photos\" to list, or \"delete photo {short_id}\" to remove."
+            )
+        except Exception as e:
+            log.error(f"Failed to save photo: {e}")
+            await update.message.reply_text("Sorry, I couldn't save that photo. Please try again.")
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    log.info("Bot started — listening.")
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    log.info("Bot started — listening (text + photos).")
     app.run_polling(drop_pending_updates=True)
 
 
