@@ -84,6 +84,17 @@ If port 3055 or 5055 is already in use, Vespera automatically picks the next ava
 
 Edit `.env` to add optional features. Everything works out of the box with no keys.
 
+**Access from your phone without Telegram:**
+
+Vespera's web UI works in any mobile browser — no app install needed.
+
+- **Same WiFi:** Find your computer's local IP (`System Settings → Wi-Fi → Details` on Mac, or `hostname -I` on Linux), then open `http://<your-ip>:3055` on your phone.
+- **From anywhere (Tailscale):** Install [Tailscale](https://tailscale.com) on both your computer and phone (free). Once connected, open `http://<tailscale-ip>:3055` on your phone — works on any network, not just home WiFi.
+
+Your Tailscale IP can be found at [login.tailscale.com](https://login.tailscale.com) or by running `tailscale ip` in a terminal.
+
+---
+
 **To add Telegram** (text from your phone):
 1. Open Telegram and message **@BotFather**
 2. Send `/newbot` — give it a name and username (must end in `bot`)
