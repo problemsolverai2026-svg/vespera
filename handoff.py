@@ -68,6 +68,8 @@ Respond in JSON only:
 
 LOCAL_RESPONSE_PROMPT = """You are a helpful AI assistant with persistent memory. Be direct and concise. No filler phrases like "great question" or "I hope you're having a great day."
 
+CRITICAL: Only respond using information explicitly present in the memory and conversation history below. If something is not in your memory or the conversation, say "I don't know" or "I don't have that information." Never invent, assume, or fabricate names, projects, dates, or context that are not explicitly stated below.
+
 Your memory of past conversations:
 {memories}
 
@@ -485,9 +487,17 @@ _CANCEL_REMINDER_CHECK = re.compile(
 )
 
 # Note-taking patterns
+# Matches the trigger phrase anywhere in the message; group(1) = everything after it
 _NOTE_SAVE_CHECK = re.compile(
-    r"^(?:note(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note)\s*[:\-]?\s+",
-    re.IGNORECASE,
+    r"(?i)^(?:.*?\b)?(?:"
+    r"note(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note"
+    r"|take(?:\s+a)?\s+note|make(?:\s+a)?\s+note(?:\s+of\s+this)?"
+    r"|remember(?:\s+that|\s+to)?"
+    r"|i\s+need\s+(?:you\s+to\s+)?(?:make|take|save|write|note)(?:\s+a)?\s*(?:note(?:\s+of\s+this)?|this\s+down|this)?"
+    r"|can\s+you\s+(?:take|make|save|note|write(?:\s+down)?|jot(?:\s+down)?)"
+    r"|please\s+(?:note|save|remember|write(?:\s+down)?|jot(?:\s+down)?)"
+    r"|write(?:\s+this)?(?:\s+down)?|save\s+this"
+    r")\s*[:\-]?\s*"
 )
 _NOTE_LIST_CHECK = re.compile(
     r"\b(?:show|list|what(?:'s| are| were)?|my|get|read)\s+(?:my\s+)?notes?\b",
@@ -596,6 +606,8 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
 
     complexity, reason, needs_search = score_complexity(message)
     log.info("Complexity: %.2f | search: %s — %s", complexity, needs_search, reason)
+
+
 
     if needs_search:
         results = web_search(message)

@@ -300,6 +300,109 @@ end tell
 # REMINDER TOOLS
 # ─────────────────────────────────────────────
 
+TOOL_DEFINITIONS.append({
+    "name": "set_reminder",
+    "description": "Set a reminder for the user at a specific time. The reminder message will be sent to the user when the time arrives.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The reminder message to send to the user."
+            },
+            "when": {
+                "type": "string",
+                "description": "When to send the reminder. Accepts natural language like '8:45pm', 'tomorrow at 9am', 'in 30 minutes', or ISO 8601 like '2026-06-16T20:00:00'."
+            },
+            "recur": {
+                "type": "string",
+                "description": "Optional recurrence: 'daily', 'weekly', 'monthly'. Omit for one-time reminder."
+            }
+        },
+        "required": ["message", "when"]
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "list_reminders",
+    "description": "List all active reminders the user has set.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "cancel_reminder",
+    "description": "Cancel an active reminder by its ID.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "The reminder ID (or first 8 characters of it)."
+            }
+        },
+        "required": ["id"]
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "add_note",
+    "description": "Save a note for the user to refer back to later.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The note content to save."
+            }
+        },
+        "required": ["content"]
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "list_notes",
+    "description": "List all saved notes.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "search_notes",
+    "description": "Search saved notes by keyword. Use this when the user asks for a specific note by topic or content.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Keyword or phrase to search for in notes."
+            }
+        },
+        "required": ["query"]
+    }
+})
+
+TOOL_DEFINITIONS.append({
+    "name": "delete_note",
+    "description": "Delete a saved note by its ID.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "The note ID (or first 4+ characters of it)."
+            }
+        },
+        "required": ["id"]
+    }
+})
+
 def run_set_reminder(message: str, when: str, recur: str = None) -> str:
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -404,4 +507,50 @@ def run_tool(name: str, inputs: dict) -> str:
         return run_list_reminders()
     if name == "cancel_reminder":
         return run_cancel_reminder(inputs.get("id", ""))
+    if name == "add_note":
+        from notes import add_note, init_notes_db
+        init_notes_db()
+        note = add_note(inputs.get("content", ""))
+        return f"Note saved (id: {note['id'][:8]}): {note['content'][:80]}"
+    if name == "list_notes":
+        from notes import list_notes, init_notes_db
+        init_notes_db()
+        notes = list_notes()
+        if not notes:
+            return "No notes saved yet."
+        from datetime import datetime, timezone, timedelta
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+        lines = []
+        for i, n in enumerate(notes, 1):
+            try:
+                dt = datetime.fromisoformat(n["created_at"]).astimezone(tz)
+                ts = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                ts = n["created_at"]
+            lines.append(f"{i}. [{n['id'][:8]}] {n['content']} ({ts})")
+        return "\U0001f4cb Your notes:\n" + "\n".join(lines)
+    if name == "delete_note":
+        from notes import delete_note, init_notes_db
+        init_notes_db()
+        ok = delete_note(inputs.get("id", ""))
+        return "Note deleted." if ok else "No note found with that ID."
+    if name == "search_notes":
+        from notes import search_notes, init_notes_db
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        init_notes_db()
+        results = search_notes(inputs.get("query", ""))
+        if not results:
+            return "No notes found matching that search."
+        tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+        lines = []
+        for i, n in enumerate(results, 1):
+            try:
+                dt = datetime.fromisoformat(n["created_at"]).astimezone(tz)
+                ts = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                ts = n["created_at"]
+            lines.append(f"{i}. [{n['id'][:8]}] {n['content']} ({ts})")
+        return "\U0001f50d Found:\n" + "\n".join(lines)
     return f"Error: unknown tool '{name}'"

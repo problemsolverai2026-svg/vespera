@@ -89,6 +89,17 @@ def delete_note(note_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def search_notes(query: str, limit: int = 10) -> list[dict]:
+    """Search notes by keyword (case-insensitive)."""
+    query = query.strip()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM notes WHERE LOWER(content) LIKE LOWER(?) ORDER BY created_at DESC LIMIT ?",
+            (f"%{query}%", limit)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_note(note_id: str) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
