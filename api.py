@@ -958,8 +958,7 @@ def remove_video(video_id):
 @app.route("/photos")
 def photos_ui():
     """Simple photo viewer page — for local use via browser."""
-    return '''
-<!DOCTYPE html>
+    return '''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -968,49 +967,111 @@ def photos_ui():
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
-  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;
+         background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 1rem; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 1rem;
        display: flex; align-items: center; gap: .5rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-          gap: 1rem; }
+  .upload-box { background: #1e2130; border: 1px solid #2d3248; border-radius: 12px;
+                padding: 1rem; margin-bottom: 1.25rem; }
+  .upload-box h2 { font-size: .9rem; color: #94a3b8; margin-bottom: .75rem; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+  .pick-area { border: 2px dashed #2d3248; border-radius: 8px; padding: 1.25rem;
+               text-align: center; cursor: pointer; color: #64748b;
+               font-size: .9rem; margin-bottom: .75rem; transition: border-color .2s; }
+  .pick-area.has-file { border-color: #6366f1; color: #a5b4fc; }
+  .pick-area input { display: none; }
+  .caption-row { margin-bottom: .75rem; }
+  .caption-row input { width: 100%; background: #131720; border: 1px solid #2d3248;
+                       border-radius: 8px; padding: .65rem .85rem; color: #e2e8f0;
+                       font-size: .9rem; outline: none; }
+  .caption-row input:focus { border-color: #6366f1; }
+  .upload-btn { width: 100%; background: #6366f1; color: #fff; border: none;
+                border-radius: 8px; padding: .75rem; font-size: .95rem;
+                font-weight: 600; cursor: pointer; }
+  .upload-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+          gap: .75rem; }
   .card { background: #1e2130; border: 1px solid #2d3248; border-radius: 10px;
           overflow: hidden; display: flex; flex-direction: column; }
   .card img { width: 100%; aspect-ratio: 4/3; object-fit: cover;
               cursor: pointer; display: block; }
-  .card-body { padding: .75rem 1rem; flex: 1; }
-  .caption { font-size: .9rem; line-height: 1.4; word-break: break-word;
-             color: #e2e8f0; margin-bottom: .4rem; }
+  .card-body { padding: .6rem .75rem; flex: 1; }
+  .caption { font-size: .85rem; line-height: 1.4; word-break: break-word;
+             color: #e2e8f0; margin-bottom: .3rem; }
   .caption.empty { color: #64748b; font-style: italic; }
-  .meta { font-size: .72rem; color: #64748b; }
-  .actions { display: flex; justify-content: flex-end; padding: .5rem .75rem;
-             border-top: 1px solid #2d3248; }
-  .delete-btn { background: none; border: none; color: #64748b; cursor: pointer;
-                font-size: .85rem; padding: .2rem .5rem; border-radius: 4px; }
-  .delete-btn:hover { color: #f87171; background: #2d1f1f; }
-  .empty { text-align: center; color: #64748b; padding: 4rem;
-           font-size: .95rem; }
+  .meta { font-size: .7rem; color: #64748b; }
+  .delete-btn { display: block; width: 100%; background: #2d1f1f; border: none;
+                border-top: 1px solid #3d2020; color: #f87171; cursor: pointer;
+                font-size: .88rem; padding: .65rem; font-weight: 500; text-align: center; }
+  .delete-btn:active { background: #3d1f1f; }
+  .empty { text-align: center; color: #64748b; padding: 3rem; font-size: .95rem; }
   .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #22c55e;
            color: #fff; padding: .6rem 1rem; border-radius: 8px;
-           font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; }
+           font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; }
   .toast.show { opacity: 1; }
-  /* Lightbox */
-  .lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
+  .lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.9);
         align-items:center; justify-content:center; z-index:1000; }
   .lb.open { display:flex; }
-  .lb img { max-width:92vw; max-height:92vh; border-radius:8px;
-             box-shadow:0 4px 32px rgba(0,0,0,.6); }
-  .lb-close { position:absolute; top:1.2rem; right:1.5rem; font-size:2rem;
-              color:#fff; cursor:pointer; user-select:none; }
+  .lb img { max-width:96vw; max-height:92vh; border-radius:8px; }
+  .lb-close { position:absolute; top:1rem; right:1.25rem; font-size:2.2rem;
+              color:#fff; cursor:pointer; user-select:none; line-height:1; }
 </style>
 </head>
 <body>
-<h1>📷 Vespera Photos</h1>
+<h1>📷 Photos</h1>
+<div class="upload-box">
+  <h2>Add a Photo</h2>
+  <div class="pick-area" id="pick-area" onclick="document.getElementById('file-in').click()">
+    <input type="file" id="file-in" accept="image/*" onchange="onFilePick(event)">
+    <span id="pick-label">Tap to choose a photo</span>
+  </div>
+  <div class="caption-row">
+    <input type="text" id="caption-in" placeholder="Caption (optional)">
+  </div>
+  <button class="upload-btn" id="upload-btn" onclick="doUpload()" disabled>Upload Photo</button>
+</div>
 <div class="grid" id="grid"></div>
-<div class="empty" id="empty" style="display:none">No photos yet. Send one via Telegram.</div>
+<div class="empty" id="empty" style="display:none">No photos yet.</div>
 <div class="toast" id="toast"></div>
 <div class="lb" id="lb"><span class="lb-close" onclick="closeLb()">✕</span><img id="lb-img" src="" /></div>
 <script>
   const API = \'\';
+  let pendingFile = null;
+  function onFilePick(e) {
+    pendingFile = e.target.files[0] || null;
+    const label = document.getElementById(\'pick-label\');
+    const area = document.getElementById(\'pick-area\');
+    if (pendingFile) {
+      label.textContent = pendingFile.name;
+      area.classList.add(\'has-file\');
+      document.getElementById(\'upload-btn\').disabled = false;
+    } else {
+      label.textContent = \'Tap to choose a photo\';
+      area.classList.remove(\'has-file\');
+      document.getElementById(\'upload-btn\').disabled = true;
+    }
+  }
+  async function doUpload() {
+    if (!pendingFile) return;
+    const caption = document.getElementById(\'caption-in\').value.trim();
+    const btn = document.getElementById(\'upload-btn\');
+    btn.disabled = true; btn.textContent = \'Uploading…\';
+    const fd = new FormData();
+    fd.append(\'photo\', pendingFile);
+    fd.append(\'caption\', caption);
+    try {
+      const r = await fetch(API + \'/api/upload/photo\', {method:\'POST\', body:fd});
+      const d = await r.json();
+      if (d.ok) {
+        toast(\'✅ Photo saved!\');
+        document.getElementById(\'caption-in\').value = \'\';
+        document.getElementById(\'pick-label\').textContent = \'Tap to choose a photo\';
+        document.getElementById(\'pick-area\').classList.remove(\'has-file\');
+        document.getElementById(\'file-in\').value = \'\';
+        pendingFile = null;
+        load();
+      } else { toast(\'❌ Upload failed\'); }
+    } catch(e) { toast(\'❌ Upload failed\'); }
+    btn.textContent = \'Upload Photo\'; btn.disabled = !pendingFile;
+  }
   async function load() {
     const r = await fetch(API + \'/api/photos\');
     const data = await r.json();
@@ -1032,29 +1093,18 @@ def photos_ui():
         : `<div class="caption empty">(no caption)</div>`;
       card.innerHTML = `
         <img src="${imgSrc}" loading="lazy" alt="photo" onclick="openLb(\'${imgSrc}\')" />
-        <div class="card-body">
-          ${captionHtml}
-          <div class="meta">${dateStr} &nbsp;·&nbsp; ${p.id.slice(0,8)}</div>
-        </div>
-        <div class="actions">
-          <button class="delete-btn" onclick="del(\'${p.id}\')">Delete</button>
-        </div>`;
+        <div class="card-body">${captionHtml}<div class="meta">${dateStr}</div></div>
+        <button class="delete-btn" onclick="del(\'${p.id}\')">🗑 Delete</button>`;
       grid.appendChild(card);
     });
   }
-  function escHtml(s) {
-    return s.replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\');
-  }
+  function escHtml(s) { return s.replace(/&/g,\'&amp;\').replace(/</g,\'&lt;\').replace(/>/g,\'&gt;\'); }
   async function del(id) {
     if (!confirm(\'Delete this photo?\')) return;
     await fetch(API + \'/api/photos/\' + id, {method:\'DELETE\'});
-    toast(\'Deleted\');
-    load();
+    toast(\'Deleted\'); load();
   }
-  function openLb(src) {
-    document.getElementById(\'lb-img\').src = src;
-    document.getElementById(\'lb\').classList.add(\'open\');
-  }
+  function openLb(src) { document.getElementById(\'lb-img\').src = src; document.getElementById(\'lb\').classList.add(\'open\'); }
   function closeLb() { document.getElementById(\'lb\').classList.remove(\'open\'); }
   document.getElementById(\'lb\').addEventListener(\'click\', e => { if (e.target.id===\'lb\') closeLb(); });
   function toast(msg) {
