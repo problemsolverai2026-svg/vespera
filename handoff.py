@@ -517,6 +517,19 @@ _PHOTO_DELETE_CHECK = re.compile(
     r"\b(?:delete|remove|erase)\s+photo\b",
     re.IGNORECASE,
 )
+_VIDEO_LIST_CHECK = re.compile(
+    r"\b(?:show|list|my|get|what(?:'s| are)?)\s+(?:my\s+)?videos?\b",
+    re.IGNORECASE,
+)
+_VIDEO_DELETE_CHECK = re.compile(
+    r"\b(?:delete|remove|erase)\s+video\b",
+    re.IGNORECASE,
+)
+_VIDEO_SEARCH_CHECK = re.compile(
+    r"\b(?:find|search|show|look\s*up)\s+videos?\s+(?:of|for|about|with|on)?\s*(.+)"
+    r"|\bsearch\s+(?:for\s+)?videos?\s+(?:of|about|with)?\s*(.+)",
+    re.IGNORECASE,
+)
 _PHOTO_SEARCH_CHECK = re.compile(
     r"\b(?:find|search|show|look\s*up)\s+photos?\s+(?:of|for|about|with|tagged|on)?\s*(.+)"
     r"|\bsearch\s+(?:for\s+)?photos?\s+(?:of|about|with)?\s*(.+)",
@@ -658,6 +671,62 @@ def _extract_query(message: str, pattern: re.Pattern) -> str:
     return next((g.strip() for g in m.groups() if g), "").strip()
 
 
+def _handle_video_locally(message: str) -> dict | None:
+    """Intercept video listing/deletion/search requests."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+
+    def _fmt_date(iso):
+        try:
+            return datetime.fromisoformat(iso).astimezone(tz).strftime("%b %d %I:%M %p")
+        except Exception:
+            return ""
+
+    # List videos
+    if _VIDEO_LIST_CHECK.search(message):
+        from photos import list_videos, init_videos_db
+        init_videos_db()
+        videos = list_videos(limit=20)
+        if not videos:
+            return {"response": "No videos saved yet. Send a video via Telegram to store one.", "handled_by": "local-video", "complexity": 0.0}
+        lines = []
+        for i, v in enumerate(videos, 1):
+            caption = v.get("caption") or "(no caption)"
+            dur = f" {v['duration_s']}s" if v.get("duration_s") else ""
+            lines.append(f"{i}. [{v['id'][:8]}]{dur} {caption}  ({_fmt_date(v['created_at'])})")
+        return {"response": "\U0001f3a5 Your videos:\n" + "\n".join(lines), "handled_by": "local-video", "complexity": 0.0}
+
+    # Delete a video
+    if _VIDEO_DELETE_CHECK.search(message):
+        match = re.search(r'[0-9a-f-]{4,}', message, re.IGNORECASE)
+        if match:
+            from photos import delete_video, init_videos_db
+            init_videos_db()
+            ok = delete_video(match.group(0))
+            return {"response": "Video deleted." if ok else f"No video found with id '{match.group(0)}'.", "handled_by": "local-video", "complexity": 0.0}
+        return {"response": "Which video? Say 'my videos' to see IDs, then 'delete video <id>'.", "handled_by": "local-video", "complexity": 0.0}
+
+    # Search videos by caption
+    if _VIDEO_SEARCH_CHECK.search(message):
+        query = _extract_query(message, _VIDEO_SEARCH_CHECK)
+        if not query:
+            return {"response": "What do you want to search for? Try: 'find videos of I-069'", "handled_by": "local-video", "complexity": 0.0}
+        from photos import search_videos, init_videos_db
+        init_videos_db()
+        results = search_videos(query)
+        if not results:
+            return {"response": f"No videos found matching '{query}'.", "handled_by": "local-video", "complexity": 0.0}
+        lines = []
+        for i, v in enumerate(results, 1):
+            caption = v.get("caption") or "(no caption)"
+            dur = f" {v['duration_s']}s" if v.get("duration_s") else ""
+            lines.append(f"{i}. [{v['id'][:8]}]{dur} {caption}  ({_fmt_date(v['created_at'])})")
+        return {"response": f"\U0001f3a5 Videos matching '{query}':\n" + "\n".join(lines), "handled_by": "local-video", "complexity": 0.0}
+
+    return None
+
+
 def _handle_photo_search(message: str) -> dict | None:
     """Search photos by caption keyword."""
     if not _PHOTO_SEARCH_CHECK.search(message):
@@ -698,8 +767,11 @@ def _handle_unified_search(message: str) -> dict | None:
     init_photos_db()
     notes = search_notes(query, limit=10)
     photos = search_photos(query, limit=10)
-    if not notes and not photos:
-        return {"response": f"Nothing found matching '{query}' in notes or photos.", "handled_by": "local-search", "complexity": 0.0}
+    from photos import search_videos, init_videos_db
+    init_videos_db()
+    videos = search_videos(query, limit=10)
+    if not notes and not photos and not videos:
+        return {"response": f"Nothing found matching '{query}' in notes, photos, or videos.", "handled_by": "local-search", "complexity": 0.0}
     from zoneinfo import ZoneInfo
     from datetime import datetime, timezone
     tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
@@ -725,6 +797,18 @@ def _handle_unified_search(message: str) -> dict | None:
             caption = p.get("caption") or "(no caption)"
             photo_lines.append(f"  {i}. [{p['id'][:8]}] {caption}  ({date_str})")
         parts.append("\U0001f4f7 Photos (" + str(len(photos)) + "):\n" + "\n".join(photo_lines))
+    if videos:
+        video_lines = []
+        for i, v in enumerate(videos, 1):
+            try:
+                dt = datetime.fromisoformat(v["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            caption = v.get("caption") or "(no caption)"
+            dur = f" {v['duration_s']}s" if v.get("duration_s") else ""
+            video_lines.append(f"  {i}. [{v['id'][:8]}]{dur} {caption}  ({date_str})")
+        parts.append("\U0001f3a5 Videos (" + str(len(videos)) + "):\n" + "\n".join(video_lines))
     header = f"Everything I have on '{query}':"
     return {"response": header + "\n\n" + "\n\n".join(parts), "handled_by": "local-search", "complexity": 0.0}
 
@@ -742,7 +826,12 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
     if photo_result is not None:
         return photo_result
 
-    # Unified cross-type search (notes + photos)
+    # Video listing/deletion/search
+    video_result = _handle_video_locally(message)
+    if video_result is not None:
+        return video_result
+
+    # Unified cross-type search (notes + photos + videos)
     unified_result = _handle_unified_search(message)
     if unified_result is not None:
         return unified_result

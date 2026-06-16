@@ -277,9 +277,60 @@ def run():
             await update.message.reply_text("Sorry, I couldn't save that photo. Please try again.")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+    async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Save a video sent via Telegram, with optional caption."""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or str(user_id)
+        if not is_allowed(user_id):
+            log.warning(f"Blocked video from: {username} ({user_id})")
+            await update.message.reply_text("Access denied.")
+            return
+
+        caption = (update.message.caption or "").strip()
+        video_obj = update.message.video or update.message.document
+        if not video_obj:
+            await update.message.reply_text("Couldn't read that video. Try sending it again.")
+            return
+
+        # Check size before downloading (Telegram bot API limit: 50 MB)
+        file_size = getattr(video_obj, "file_size", 0) or 0
+        MAX_BYTES = 50 * 1024 * 1024
+        if file_size > MAX_BYTES:
+            await update.message.reply_text(
+                f"\u26a0\ufe0f That video is {file_size // (1024*1024)} MB — Telegram's bot limit is 50 MB. "
+                "Try trimming it or sending a shorter clip."
+            )
+            return
+
+        duration_s = getattr(video_obj, "duration", 0) or 0
+        log.info(f"Video from {username}: {file_size//1024} KB, {duration_s}s, caption={caption[:60]!r}")
+
+        try:
+            from photos import init_videos_db, add_video, VIDEOS_DIR
+            import uuid as _uuid
+            init_videos_db()
+
+            tg_file = await context.bot.get_file(video_obj.file_id)
+            filename = f"{_uuid.uuid4().hex}.mp4"
+            dest = VIDEOS_DIR / filename
+            await tg_file.download_to_drive(str(dest))
+
+            record = add_video(filename, caption, duration_s)
+            short_id = record["id"][:8]
+            caption_line = f"\nCaption: {caption}" if caption else ""
+            dur_line = f"\nDuration: {duration_s}s" if duration_s else ""
+            await update.message.reply_text(
+                f"\U0001f3a5 Video saved!{caption_line}{dur_line}\nID: {short_id}\n\n"
+                f"Say \"my videos\" to list, or \"delete video {short_id}\" to remove."
+            )
+        except Exception as e:
+            log.error(f"Failed to save video: {e}")
+            await update.message.reply_text("Sorry, I couldn't save that video. Please try again.")
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    log.info("Bot started — listening (text + photos).")
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video))
+    log.info("Bot started — listening (text + photos + videos).")
     app.run_polling(drop_pending_updates=True)
 
 

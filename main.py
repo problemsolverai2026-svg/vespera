@@ -159,8 +159,9 @@ def main():
 
     from notes import init_notes_db
     init_notes_db()
-    from photos import init_photos_db
+    from photos import init_photos_db, init_videos_db
     init_photos_db()
+    init_videos_db()
 
     if "--test" in sys.argv:
         try:
