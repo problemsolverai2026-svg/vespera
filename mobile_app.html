@@ -18,51 +18,53 @@ html,body{height:100%;background:#0f1117;color:#e2e8f0;font-family:-apple-system
 .tab-content.active{display:flex}
 
 /* Top bar */
-.topbar{padding:env(safe-area-inset-top,12px) 1rem .75rem;background:#131720;border-bottom:1px solid #1e2130;display:flex;align-items:center;gap:.5rem;flex-shrink:0}
-.topbar h1{font-size:1.1rem;font-weight:700;color:#6366f1}
-.topbar .status{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0}
-.topbar .status.offline{background:#f87171}
+.topbar{padding:env(safe-area-inset-top,16px) 1rem 1rem;background:#131720;border-bottom:1px solid #1e2130;display:flex;align-items:center;gap:.75rem;flex-shrink:0}
+.topbar h1{font-size:1.5rem;font-weight:800;letter-spacing:-.5px;color:#818cf8;text-shadow:0 0 24px rgba(99,102,241,.6),0 0 8px rgba(99,102,241,.3)}
+.topbar .status{width:9px;height:9px;border-radius:50%;background:#22c55e;flex-shrink:0;box-shadow:0 0 6px #22c55e}
+.topbar .status.offline{background:#f87171;box-shadow:0 0 6px #f87171}
 
 /* Bottom nav */
 nav{display:flex;background:#131720;border-top:1px solid #1e2130;padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0}
-nav button{flex:1;background:none;border:none;color:#64748b;padding:.7rem .25rem .5rem;font-size:.65rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:color .15s}
-nav button .icon{font-size:1.3rem;line-height:1}
-nav button.active{color:#6366f1}
+nav button{flex:1;background:none;border:none;color:#64748b;padding:.8rem .25rem .6rem;font-size:.7rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:color .2s}
+nav button .icon{font-size:1.6rem;line-height:1}
+nav button.active{color:#818cf8}
 nav button:active{opacity:.7}
 
 /* Shared scrollable body */
 .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem}
 
 /* ── CHAT ── */
-#chat-messages{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem;display:flex;flex-direction:column;gap:.75rem}
+#chat-messages{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem;display:flex;flex-direction:column;gap:.75rem;background:radial-gradient(ellipse at 50% 0%,#1a1540 0%,#0f1117 65%)}
 .msg{max-width:85%;padding:.65rem .9rem;border-radius:16px;font-size:.92rem;line-height:1.5;word-break:break-word;white-space:pre-wrap}
 .msg.user{align-self:flex-end;background:#6366f1;color:#fff;border-bottom-right-radius:4px}
 .msg.assistant{align-self:flex-start;background:#1e2130;color:#e2e8f0;border-bottom-left-radius:4px}
 .msg.thinking{align-self:flex-start;background:#1e2130;color:#64748b;font-style:italic;border-bottom-left-radius:4px}
-.chat-input-row{display:flex;gap:.5rem;padding:.75rem 1rem;padding-bottom:max(.75rem,env(safe-area-inset-bottom));background:#131720;border-top:1px solid #1e2130;flex-shrink:0}
-.chat-input-row input{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:22px;padding:.6rem 1rem;color:#e2e8f0;font-size:.95rem;outline:none;min-width:0}
-.chat-input-row input:focus{border-color:#6366f1}
-.send-btn{background:#6366f1;border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:1.1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.send-btn:active{opacity:.7}
+.chat-input-row{display:flex;gap:.6rem;padding:.85rem 1rem;padding-bottom:max(.85rem,env(safe-area-inset-bottom));background:#131720;border-top:1px solid #1e2130;flex-shrink:0}
+.chat-input-row input{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:26px;padding:.75rem 1.2rem;color:#e2e8f0;font-size:1rem;outline:none;min-width:0}
+.chat-input-row input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.send-btn{background:linear-gradient(135deg,#6366f1,#818cf8);border:none;border-radius:50%;width:46px;height:46px;color:#fff;font-size:1.2rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(99,102,241,.45)}
+.send-btn:active{opacity:.8;transform:scale(.95)}
+.send-btn:disabled{opacity:.35;box-shadow:none}
 
 /* ── NOTES ── */
-.note-add{display:flex;gap:.5rem;margin-bottom:1rem}
-.note-add textarea{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:10px;padding:.65rem .9rem;color:#e2e8f0;font-size:.9rem;resize:none;min-height:70px;outline:none;font-family:inherit}
-.note-add textarea:focus{border-color:#6366f1}
-.note-add button{background:#6366f1;color:#fff;border:none;border-radius:10px;padding:.65rem .9rem;cursor:pointer;font-size:.9rem;align-self:flex-start;white-space:nowrap}
-.note-card{background:#1e2130;border:1px solid #2d3248;border-radius:10px;padding:.85rem 1rem;margin-bottom:.65rem;display:flex;gap:.75rem;align-items:flex-start}
+.note-add{display:flex;gap:.6rem;margin-bottom:1.1rem}
+.note-add textarea{flex:1;background:#1e2130;border:1px solid #2d3248;border-radius:14px;padding:.8rem 1rem;color:#e2e8f0;font-size:.95rem;resize:none;min-height:76px;outline:none;font-family:inherit}
+.note-add textarea:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15)}
+.note-add button{background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;border:none;border-radius:14px;padding:.8rem 1.1rem;cursor:pointer;font-size:.95rem;font-weight:600;align-self:flex-start;white-space:nowrap;box-shadow:0 2px 10px rgba(99,102,241,.4)}
+.note-add button:active{opacity:.8}
+.note-card{background:#1e2130;border:1px solid #2a3048;border-radius:16px;padding:1.05rem 1.1rem;margin-bottom:.75rem;display:flex;gap:.75rem;align-items:flex-start;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .note-card .nc-body{flex:1;min-width:0}
-.note-card .nc-text{font-size:.9rem;line-height:1.5;word-break:break-word}
-.note-card .nc-meta{font-size:.72rem;color:#64748b;margin-top:.3rem}
-.note-card .del-btn{background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem;padding:.1rem .3rem;flex-shrink:0}
+.note-card .nc-text{font-size:.93rem;line-height:1.55;word-break:break-word}
+.note-card .nc-meta{font-size:.78rem;color:#64748b;margin-top:.4rem;letter-spacing:.01em}
+.note-card .del-btn{background:none;border:none;color:#475569;cursor:pointer;font-size:1rem;padding:.1rem .3rem;flex-shrink:0}
 .note-card .del-btn:active{color:#f87171}
 
 /* ── MEDIA ── */
-.media-upload{background:#1e2130;border:1px solid #2d3248;border-radius:12px;padding:1rem;margin-bottom:1rem}
+.media-upload{background:#1e2130;border:1px solid #2d3248;border-radius:14px;padding:1.1rem;margin-bottom:1rem}
 .media-upload .row{display:flex;gap:.75rem;margin-bottom:.75rem}
-.pick-btn{flex:1;background:#1a1f2e;border:1px dashed #2d3248;border-radius:8px;padding:.85rem;color:#94a3b8;font-size:.85rem;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem}
-.pick-btn .pb-icon{font-size:1.4rem}
-.pick-btn:active{background:#232840}
+.pick-btn{flex:1;background:#1a1f2e;border:1px dashed #3d4560;border-radius:14px;padding:1.2rem .5rem;color:#94a3b8;font-size:.88rem;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.5rem;transition:border-color .15s,background .15s}
+.pick-btn .pb-icon{font-size:1.9rem}
+.pick-btn:active{background:#232840;border-color:#6366f1}
 .caption-row{display:flex;gap:.5rem}
 .caption-row input{flex:1;background:#131720;border:1px solid #2d3248;border-radius:8px;padding:.55rem .85rem;color:#e2e8f0;font-size:.88rem;outline:none}
 .caption-row input:focus{border-color:#6366f1}
@@ -71,11 +73,11 @@ nav button:active{opacity:.7}
 .media-tabs{display:flex;border-bottom:1px solid #1e2130;margin-bottom:.75rem}
 .media-tab-btn{flex:1;background:none;border:none;color:#64748b;padding:.55rem;font-size:.85rem;cursor:pointer}
 .media-tab-btn.active{color:#6366f1;border-bottom:2px solid #6366f1}
-.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.6rem}
-.media-item{border-radius:8px;overflow:hidden;background:#1e2130;border:1px solid #2d3248;display:flex;flex-direction:column}
-.media-item img,.media-item video{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
-.media-item .mi-footer{padding:.4rem .6rem;display:flex;justify-content:space-between;align-items:center;gap:.25rem}
-.media-item .mi-caption{font-size:.72rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer;text-decoration:underline dotted #475569}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.75rem}
+.media-item{border-radius:12px;overflow:hidden;background:#1e2130;border:1px solid #2a3048;display:flex;flex-direction:column;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.media-item img,.media-item video{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.media-item .mi-footer{padding:.5rem .7rem;display:flex;justify-content:space-between;align-items:center;gap:.25rem}
+.media-item .mi-caption{font-size:.75rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer;text-decoration:underline dotted #475569}
 .media-item .mi-del{background:#2d1f1f;border:none;border-radius:4px;color:#f87171;cursor:pointer;font-size:.85rem;flex-shrink:0;padding:.15rem .4rem;font-weight:600}
 .media-item .mi-del:active{color:#f87171}
 .preview-bar{background:#232840;border-radius:8px;padding:.6rem .85rem;margin-bottom:.5rem;font-size:.83rem;color:#94a3b8;display:none}
@@ -114,6 +116,8 @@ input[type=file]{display:none}
   <div class="topbar">
     <span class="status" id="status-dot"></span>
     <h1>♟ Vespera</h1>
+    <span style="flex:1"></span>
+    <span id="topbar-hint" style="font-size:.72rem;color:#475569"></span>
   </div>
 
   <!-- CHAT TAB -->
@@ -283,7 +287,7 @@ function fmtDate(iso) {
 function renderChat() {
   const el = document.getElementById('chat-messages');
   if (!chatMessages.length) {
-    el.innerHTML = '<div class="empty">Say something to Vespera…</div>';
+    el.innerHTML = '<div class="empty" style="padding-top:4rem"><div style="font-size:2.5rem;margin-bottom:.75rem">♟</div><div style="font-size:1.1rem;font-weight:600;color:#818cf8;margin-bottom:.4rem">Vespera</div><div style="font-size:.9rem;color:#475569">Say something…</div></div>';
     return;
   }
   el.innerHTML = chatMessages.map(m =>
