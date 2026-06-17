@@ -139,7 +139,7 @@ label span{font-size:.75rem;color:var(--muted);display:block;margin-bottom:.25re
   </nav>
   <div class="status-bar">
     <span id="conn-dot" class="logo-dot status-dot"></span>
-    <span id="conn-label">connecting…</span>
+    <span id="conn-label" data-base="">connecting…</span>
     <span class="stat-group" id="mem-stats"></span>
   </div>
 </header>
@@ -318,7 +318,7 @@ async function pollStatus(){
     const d=await apiJson('/api/status');
     const dot=document.getElementById('conn-dot');
     const lbl=document.getElementById('conn-label');
-    dot.classList.remove('offline');lbl.textContent='Connected · localhost:5055';
+    dot.classList.remove('offline');lbl.textContent='Connected · '+window.location.host;
     const mem=d.memory||{};
     const stats=document.getElementById('mem-stats');
     stats.innerHTML=['working','recent','validated','core'].map(l=>`<span><span class="muted">${l.charAt(0).toUpperCase()+l.slice(1)}</span> ${mem[l]??'—'}</span>`).join('');
@@ -677,8 +677,8 @@ async function runAction(kind){
 //  PHONE SETUP
 // ══════════════════════════════════════════════════════════
 function initPhone(){
-  const host=window.location.hostname;
-  document.getElementById('app-url').textContent=`http://${host}:5055/app`;
+  const origin=window.location.origin;
+  document.getElementById('app-url').textContent=`${origin}/app`;
 }
 
 function switchOS(os){
