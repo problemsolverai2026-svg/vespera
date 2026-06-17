@@ -762,6 +762,10 @@ def _handle_unified_search(message: str) -> dict | None:
     query = _extract_query(message, _UNIFIED_SEARCH_CHECK)
     if not query:
         return None  # fall through to normal routing
+    # Strip leading connector words (e.g. "with", "about", "for", "on", "regarding")
+    query = re.sub(r'^(?:with|about|for|on|regarding|concerning|involving|related\s+to|that\s+has\s+to\s+do\s+with)\s+', '', query, flags=re.IGNORECASE).strip()
+    if not query:
+        return None
     from notes import search_notes, init_notes_db
     from photos import search_photos, init_photos_db
     init_notes_db()
