@@ -588,17 +588,7 @@ def _handle_note_locally(message: str) -> dict | None:
     from notes import add_note, list_notes, delete_note, init_notes_db
     init_notes_db()
 
-    # Save a note
-    m = _NOTE_SAVE_CHECK.match(message)
-    if m:
-        content = message[m.end():].strip()
-        if not content:
-            return {"response": "What do you want to note? Try: 'note: pick up milk'", "handled_by": "local-note", "complexity": 0.0}
-        note = add_note(content)
-        short_id = note["id"][:8]
-        return {"response": f"\U0001f4dd Noted: {content} (id: {short_id})", "handled_by": "local-note", "complexity": 0.0}
-
-    # List notes
+    # List notes — checked FIRST to avoid "show my notes" matching the save regex
     if _NOTE_LIST_CHECK.search(message):
         notes = list_notes()
         if not notes:
@@ -617,6 +607,16 @@ def _handle_note_locally(message: str) -> dict | None:
         return {"response": "\U0001f4cb Your notes:\n" + "\n".join(lines), "handled_by": "local-note", "complexity": 0.0}
 
     # Delete a note
+    # Save a note
+    m = _NOTE_SAVE_CHECK.match(message)
+    if m:
+        note_content = message[m.end():].strip()
+        if not note_content:
+            return {"response": "What do you want to note? Try: 'note: pick up milk'", "handled_by": "local-note", "complexity": 0.0}
+        note = add_note(note_content)
+        short_id = note["id"][:8]
+        return {"response": f"\U0001f4dd Noted: {note_content} (id: {short_id})", "handled_by": "local-note", "complexity": 0.0}
+
     if _NOTE_DELETE_CHECK.search(message):
         match = re.search(r'[0-9a-f-]{4,}', message, re.IGNORECASE)
         if match:
