@@ -489,7 +489,7 @@ _CANCEL_REMINDER_CHECK = re.compile(
 # Note-taking patterns
 # Matches the trigger phrase anywhere in the message; group(1) = everything after it
 _NOTE_SAVE_CHECK = re.compile(
-    r"(?i)^(?:.*?\b)?(?:"
+    r"(?i)^(?!(?:show|list|find|search|get|what|my|read|retrieve|look)\b)(?:.*?\b)?(?:"
     r"note(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note"
     r"|take(?:\s+a)?\s+note|make(?:\s+a)?\s+note(?:\s+of\s+this)?"
     r"|remember(?:\s+that|\s+to)?"
@@ -537,10 +537,11 @@ _PHOTO_SEARCH_CHECK = re.compile(
 )
 # Unified cross-type search (notes + photos)
 _UNIFIED_SEARCH_CHECK = re.compile(
-    r"\bfind\s+(?:everything|all)\s+(?:about|on|for|related\s+to)\s+(.+)"
-    r"|\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for)\s+(.+)"
+    r"\bfind\s+(?:everything|all)\s+(?:about|on|for|related\s+to|that\s+(?:has|have)\s+to\s+do\s+with|regarding|concerning|involving)\s+(.+)"
+    r"|\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for|related\s+to|regarding)\s+(.+)"
     r"|\blook\s+up\s+(.+)"
-    r"|\bsearch\s+(?:for\s+)?(?:everything\s+(?:about|on)\s+)?(.+)\s+(?:in\s+(?:notes?|photos?|everything))",
+    r"|\bsearch\s+(?:for\s+)?(?:everything\s+(?:about|on)\s+)?(.+)\s+(?:in\s+(?:notes?|photos?|everything))"
+    r"|\bfind\s+(?:everything|all)\s+(.+)",
     re.IGNORECASE,
 )
 
