@@ -313,9 +313,9 @@ function renderBotMsg(text) {
       const imgUrl = '/api/photos/' + id + '/image';
       out.push(
         '<div style="margin:.5rem 0">' +
-        '<img src="' + imgUrl + '" data-id="' + id + '" data-caption="' + esc(caption) + '" ' +
-        'style="width:100%;max-width:220px;border-radius:6px;display:block;cursor:pointer" loading="lazy" ' +
-        'onclick="openLb('photo',this.dataset.id,this.dataset.caption)" />' +
+        '<img src="' + imgUrl + '" data-photo-id="' + id + '" data-photo-caption="' + esc(caption) + '" ' +
+        'class="chat-photo-thumb" ' +
+        'style="width:100%;max-width:220px;border-radius:6px;display:block;cursor:pointer" loading="lazy" />' +
         '<div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem">' + esc(caption) + ' &middot; ' + esc(date) + '</div>' +
         '</div>'
       );
@@ -581,6 +581,12 @@ async function doSearch() {
 
 document.getElementById('search-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doSearch();
+});
+
+document.addEventListener('click', function(e) {
+  if (e.target.classList && e.target.classList.contains('chat-photo-thumb')) {
+    openLb('photo', e.target.dataset.photoId, e.target.dataset.photoCaption || '');
+  }
 });
 </script>
 </body>
