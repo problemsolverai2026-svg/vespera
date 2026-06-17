@@ -541,7 +541,9 @@ _UNIFIED_SEARCH_CHECK = re.compile(
     r"|(?:can\s+you\s+|please\s+)?\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for|with|related\s+to|regarding)\s+(.+)"
     r"|\blook\s+up\s+(.+)"
     r"|\bsearch\s+(?:for\s+)?(?:everything\s+(?:about|on)\s+)?(.+)\s+(?:in\s+(?:notes?|photos?|everything))"
-    r"|(?:can\s+you\s+|please\s+)?\bfind\s+(?:everything|all)\s+(.+)",
+    r"|(?:can\s+you\s+|please\s+)?\bfind\s+(?:everything|all)\s+(.+)"
+    r"|(?:can\s+you\s+|please\s+)?\bfind\s+(.+)"
+    r"|(?:can\s+you\s+|please\s+)?\bshow\s+me\s+(.+)",
     re.IGNORECASE,
 )
 
@@ -753,7 +755,8 @@ def _handle_photo_search(message: str) -> dict | None:
             date_str = ""
         caption = p.get("caption") or "(no caption)"
         lines.append(f"{i}. [{p['id'][:8]}] {caption}  ({date_str})")
-    return {"response": f"\U0001f4f7 Photos matching '{query}':\n" + "\n".join(lines), "handled_by": "local-photo", "complexity": 0.0}
+    photo_items = [{"id": p["id"], "caption": p.get("caption") or "", "created_at": p.get("created_at") or ""} for p in results]
+    return {"response": f"\U0001f4f7 Photos matching '{query}':", "handled_by": "local-photo", "complexity": 0.0, "photos": photo_items}
 
 
 def _handle_unified_search(message: str) -> dict | None:
@@ -821,7 +824,8 @@ def _handle_unified_search(message: str) -> dict | None:
             video_lines.append(f"  {i}. [{v['id'][:8]}]{dur} {caption}  ({date_str})")
         parts.append("\U0001f3a5 Videos (" + str(len(videos)) + "):\n" + "\n".join(video_lines))
     header = f"Everything I have on '{query}':"
-    return {"response": header + "\n\n" + "\n\n".join(parts), "handled_by": "local-search", "complexity": 0.0}
+    photo_items = [{"id": p["id"], "caption": p.get("caption") or "", "created_at": p.get("created_at") or ""} for p in photos] if photos else None
+    return {"response": header + "\n\n" + "\n\n".join(parts), "handled_by": "local-search", "complexity": 0.0, "photos": photo_items}
 
 
 def _route_message(message: str, memories: str, recent: str) -> dict:
