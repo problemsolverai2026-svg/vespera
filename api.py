@@ -391,6 +391,7 @@ def chat():
             "handled_by": result.get("handled_by", "unknown"),
             "complexity": result.get("complexity", 0.0),
             "audio": tts_url,
+            "photos": result.get("photos") or None,
         })
     except Exception:
         import traceback

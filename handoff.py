@@ -649,7 +649,8 @@ def _handle_photo_locally(message: str) -> dict | None:
                 date_str = ""
             caption = f" — {p['caption']}" if p.get("caption") else ""
             lines.append(f"{i}. [{p['id'][:8]}]{caption}  ({date_str})")
-        return {"response": "\U0001f4f7 Your photos:\n" + "\n".join(lines), "handled_by": "local-photo", "complexity": 0.0}
+        photo_items = [{"id": p["id"], "caption": p.get("caption") or "", "created_at": p.get("created_at") or ""} for p in photos]
+        return {"response": "\U0001f4f7 Your photos:", "handled_by": "local-photo", "complexity": 0.0, "photos": photo_items}
 
     # Delete a photo
     if _PHOTO_DELETE_CHECK.search(message):
