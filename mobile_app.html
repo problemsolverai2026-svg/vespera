@@ -73,6 +73,13 @@ nav button:active{opacity:.7}
 .media-tabs{display:flex;border-bottom:1px solid #1e2130;margin-bottom:.75rem}
 .media-tab-btn{flex:1;background:none;border:none;color:#64748b;padding:.55rem;font-size:.85rem;cursor:pointer}
 .media-tab-btn.active{color:#6366f1;border-bottom:2px solid #6366f1}
+.mem-layer-btn{flex:1;background:none;border:none;color:#64748b;padding:.45rem .25rem;font-size:.75rem;cursor:pointer;border-radius:6px;transition:all .15s}
+.mem-layer-btn.active{background:#6366f1;color:#fff}
+.mem-card{background:#1a1f2e;border:1px solid #1e2130;border-radius:8px;padding:.75rem;margin-bottom:.6rem}
+.mem-card p{font-size:.82rem;color:#e2e8f0;line-height:1.45;margin:0 0 .5rem}
+.mem-card-footer{display:flex;align-items:center;gap:.5rem;font-size:.7rem;color:#64748b}
+.mem-del-btn{margin-left:auto;background:none;border:1px solid #7f1d1d;color:#f87171;border-radius:4px;padding:.2rem .5rem;font-size:.7rem;cursor:pointer}
+.mem-del-btn:active{background:#7f1d1d}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.75rem}
 .media-item{border-radius:12px;overflow:hidden;background:#1e2130;border:1px solid #2a3048;display:flex;flex-direction:column;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .media-item img,.media-item video{width:100%;aspect-ratio:1;object-fit:cover;display:block}
@@ -176,6 +183,18 @@ input[type=file]{display:none}
   </div>
 
   <!-- SEARCH TAB -->
+  <div class="tab-content" id="tab-memory">
+    <div class="scroll" style="padding:.75rem">
+      <div style="display:flex;gap:.4rem;margin-bottom:.75rem;background:#1a1f2e;border-radius:8px;padding:4px">
+        <button class="mem-layer-btn active" id="ml-working" onclick="switchMemLayer('working')">Working</button>
+        <button class="mem-layer-btn" id="ml-recent" onclick="switchMemLayer('recent')">Recent</button>
+        <button class="mem-layer-btn" id="ml-validated" onclick="switchMemLayer('validated')">Validated</button>
+        <button class="mem-layer-btn" id="ml-core" onclick="switchMemLayer('core')">Core</button>
+      </div>
+      <div id="mem-list"><p style="color:#64748b;font-size:.85rem;text-align:center;padding:2rem">Loading…</p></div>
+    </div>
+  </div>
+
   <div class="tab-content" id="tab-search">
     <div class="scroll">
       <div class="search-bar">
@@ -196,6 +215,9 @@ input[type=file]{display:none}
     </button>
     <button id="nav-media" onclick="switchTab('media')">
       <span class="icon">📷</span>Media
+    </button>
+    <button id="nav-memory" onclick="switchTab('memory')">
+      <span class="icon">🧠</span>Memory
     </button>
     <button id="nav-search" onclick="switchTab('search')">
       <span class="icon">🔍</span>Search
@@ -261,6 +283,7 @@ function switchTab(name) {
   activeTab = name;
   if (name === 'notes') loadNotes();
   if (name === 'media') loadMedia();
+  if (name === 'memory') loadMemories();
 }
 
 // ── Toast ───────────────────────────────────────────────
@@ -657,6 +680,52 @@ function closeLb() {
     _lbPanning = false; _lbLastDist = 0; _lbMoved = false;
   }, { passive: true });
 })();
+
+// ── MEMORY ──────────────────────────────────────────────
+let _memLayer = 'working';
+
+function switchMemLayer(layer) {
+  _memLayer = layer;
+  ['working','recent','validated','core'].forEach(l => {
+    document.getElementById('ml-' + l).className = 'mem-layer-btn' + (l === layer ? ' active' : '');
+  });
+  loadMemories();
+}
+
+async function loadMemories() {
+  const el = document.getElementById('mem-list');
+  el.innerHTML = '<p style="color:#64748b;font-size:.85rem;text-align:center;padding:2rem">Loading…</p>';
+  try {
+    const r = await fetch('/api/memories?layer=' + encodeURIComponent(_memLayer) + '&limit=100', { headers: authHeadersForm() });
+    const data = await r.json();
+    const items = data.memories || [];
+    if (!items.length) {
+      el.innerHTML = '<p style="color:#64748b;font-size:.85rem;text-align:center;padding:2rem">No memories in this layer.</p>';
+      return;
+    }
+    el.innerHTML = items.map(m => {
+      const ts = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+      const trust = m.trust_score != null ? 'trust ' + Number(m.trust_score).toFixed(2) : '';
+      return `<div class="mem-card" data-id="${esc(m.id||'')}"><p>${esc(m.content)}</p><div class="mem-card-footer">${trust ? '<span>'+trust+'</span>' : ''}<span>${ts}</span><button class="mem-del-btn" onclick="deleteMem(this,'${esc(m.id||'')}')">Delete</button></div></div>`;
+    }).join('');
+  } catch { el.innerHTML = '<p style="color:#f87171;font-size:.85rem;text-align:center;padding:2rem">Failed to load memories.</p>'; }
+}
+
+async function deleteMem(btn, id) {
+  if (!id) return;
+  if (!confirm('Delete this memory?')) return;
+  btn.textContent = '…';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE', headers: authHeadersForm() });
+    if (!r.ok) throw new Error();
+    btn.closest('.mem-card').remove();
+  } catch {
+    btn.textContent = 'Delete';
+    btn.disabled = false;
+    showToast('Delete failed');
+  }
+}
 
 // ── SEARCH ──────────────────────────────────────────────
 async function doSearch() {

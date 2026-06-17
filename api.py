@@ -291,6 +291,19 @@ def list_memories():
     return jsonify({"ok": True, "memories": memories})
 
 
+@app.route("/api/memories/<memory_id>", methods=["DELETE"])
+def delete_memory(memory_id: str):
+    auth_err = require_auth()
+    if auth_err: return auth_err
+    try:
+        from memory.store import prune_memory
+        prune_memory(memory_id, reason="deleted by user", pruned_by="user")
+        return jsonify({"ok": True, "deleted": memory_id})
+    except Exception as e:
+        log.exception("delete_memory error")
+        return jsonify({"ok": False, "error": "Delete failed"}), 500
+
+
 @app.route("/api/conversations")
 def list_conversations():
     auth_err = require_auth()
