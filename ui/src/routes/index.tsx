@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { vespera, API_BASE } from "@/lib/vespera";
@@ -362,10 +363,10 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
     };
   }, []);
 
-  return (
+  return createPortal(
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90"
       style={{ touchAction: "none" }}
     >
       <img
@@ -385,8 +386,9 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         ✕
       </button>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 pointer-events-none select-none">
-        Pinch to zoom · drag to pan · tap to close
+        Pinch to zoom · drag to pan · tap to close · v4
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
