@@ -231,101 +231,106 @@ function PhotoGrid({ photos }: { photos: PhotoItem[] }) {
 }
 
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const scale = useRef(1);
-  const tx = useRef(0);
-  const ty = useRef(0);
-  const lastDist = useRef<number | null>(null);
-  const lastTouch = useRef<{ x: number; y: number } | null>(null);
-  const lastTap = useRef(0);
+  const state = useRef({ scale: 1, tx: 0, ty: 0, lastDist: 0, lastX: 0, lastY: 0, lastTap: 0, touching: false });
 
-  const applyTransform = useCallback(() => {
-    if (!imgRef.current) return;
-    imgRef.current.style.transform = `translate(${tx.current}px, ${ty.current}px) scale(${scale.current})`;
-  }, []);
-
-  const clampTranslation = useCallback(() => {
-    if (!imgRef.current) return;
+  const apply = () => {
     const img = imgRef.current;
-    const w = img.naturalWidth * scale.current;
-    const h = img.naturalHeight * scale.current;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const maxX = Math.max(0, (w - vw) / 2);
-    const maxY = Math.max(0, (h - vh) / 2);
-    tx.current = Math.min(maxX, Math.max(-maxX, tx.current));
-    ty.current = Math.min(maxY, Math.max(-maxY, ty.current));
-  }, []);
+    if (!img) return;
+    const s = state.current;
+    img.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+  };
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[1].clientX - e.touches[0].clientX;
-      const dy = e.touches[1].clientY - e.touches[0].clientY;
-      lastDist.current = Math.hypot(dx, dy);
-      lastTouch.current = null;
-    } else if (e.touches.length === 1) {
-      lastTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      lastDist.current = null;
-    }
-  }, []);
+  const clamp = () => {
+    const img = imgRef.current;
+    if (!img) return;
+    const s = state.current;
+    const maxX = Math.max(0, (img.offsetWidth * s.scale - window.innerWidth) / 2);
+    const maxY = Math.max(0, (img.offsetHeight * s.scale - window.innerHeight) / 2);
+    s.tx = Math.min(maxX, Math.max(-maxX, s.tx));
+    s.ty = Math.min(maxY, Math.max(-maxY, s.ty));
+  };
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    if (e.touches.length === 2 && lastDist.current !== null) {
-      // Pinch zoom
-      const dx = e.touches[1].clientX - e.touches[0].clientX;
-      const dy = e.touches[1].clientY - e.touches[0].clientY;
-      const dist = Math.hypot(dx, dy);
-      const delta = dist / lastDist.current;
-      scale.current = Math.min(8, Math.max(1, scale.current * delta));
-      lastDist.current = dist;
-      clampTranslation();
-      applyTransform();
-    } else if (e.touches.length === 1 && lastTouch.current && scale.current > 1) {
-      // Pan when zoomed
-      const dx = e.touches[0].clientX - lastTouch.current.x;
-      const dy = e.touches[0].clientY - lastTouch.current.y;
-      tx.current += dx;
-      ty.current += dy;
-      lastTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      clampTranslation();
-      applyTransform();
-    }
-  }, [applyTransform, clampTranslation]);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const s = state.current;
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    // Double-tap to reset zoom
-    if (e.changedTouches.length === 1 && scale.current === 1) {
-      const now = Date.now();
-      if (now - lastTap.current < 300) {
-        scale.current = 1;
-        tx.current = 0;
-        ty.current = 0;
-        applyTransform();
+    const onStart = (e: TouchEvent) => {
+      e.preventDefault();
+      s.touching = true;
+      if (e.touches.length === 2) {
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        s.lastDist = Math.hypot(dx, dy);
+      } else if (e.touches.length === 1) {
+        s.lastX = e.touches[0].clientX;
+        s.lastY = e.touches[0].clientY;
       }
-      lastTap.current = now;
-    }
-    if (e.touches.length < 2) lastDist.current = null;
-    if (e.touches.length < 1) lastTouch.current = null;
-  }, [applyTransform]);
+    };
 
-  const handleBackdropTap = useCallback(() => {
-    if (scale.current > 1) {
-      // First tap when zoomed: reset zoom instead of closing
-      scale.current = 1;
-      tx.current = 0;
-      ty.current = 0;
-      applyTransform();
-    } else {
-      onClose();
-    }
-  }, [applyTransform, onClose]);
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 2) {
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (s.lastDist > 0) {
+          s.scale = Math.min(8, Math.max(1, s.scale * (dist / s.lastDist)));
+        }
+        s.lastDist = dist;
+        clamp();
+        apply();
+      } else if (e.touches.length === 1 && s.scale > 1) {
+        s.tx += e.touches[0].clientX - s.lastX;
+        s.ty += e.touches[0].clientY - s.lastY;
+        s.lastX = e.touches[0].clientX;
+        s.lastY = e.touches[0].clientY;
+        clamp();
+        apply();
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 0) {
+        s.touching = false;
+        // Double-tap to reset
+        if (e.changedTouches.length === 1) {
+          const now = Date.now();
+          if (now - s.lastTap < 300) {
+            s.scale = 1; s.tx = 0; s.ty = 0;
+            apply();
+          }
+          s.lastTap = now;
+        }
+      }
+      if (e.touches.length < 2) s.lastDist = 0;
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+    };
+  }, []);
 
   return (
     <div
+      ref={containerRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-      onClick={handleBackdropTap}
       style={{ touchAction: "none" }}
+      onClick={(e) => {
+        if (e.target === containerRef.current) {
+          const s = state.current;
+          if (s.scale > 1) { s.scale = 1; s.tx = 0; s.ty = 0; apply(); }
+          else onClose();
+        }
+      }}
     >
       <img
         ref={imgRef}
@@ -333,10 +338,6 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         alt="photo"
         className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl select-none"
         style={{ transformOrigin: "center center", willChange: "transform", touchAction: "none" }}
-        onClick={(e) => e.stopPropagation()}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         draggable={false}
       />
       <button
