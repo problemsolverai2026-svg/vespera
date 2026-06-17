@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vespera</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--card:#1a1f2e;--border:#1e2130;--primary:#6366f1;--primary-fg:#fff;
+  --text:#e2e8f0;--muted:#64748b;--local:#22c55e;--cloud:#f59e0b;
+  --destructive:#ef4444;--input-bg:#131720;
+  --ring:#6366f1;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── NAV ───────────────────────────────────── */
+header{position:sticky;top:0;z-index:50;background:rgba(15,17,23,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-shrink:0}
+.logo{font-family:monospace;font-size:.85rem;letter-spacing:.05em;display:flex;align-items:center;gap:.4rem;text-decoration:none;color:var(--text)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--primary)}
+nav{display:flex;gap:.25rem;flex:1}
+nav button{background:none;border:none;color:var(--muted);padding:.4rem .75rem;border-radius:6px;cursor:pointer;font-size:.85rem;transition:color .15s,background .15s;white-space:nowrap}
+nav button:hover{color:var(--text);background:rgba(255,255,255,.06)}
+nav button.active{background:rgba(255,255,255,.1);color:var(--text)}
+.status-bar{margin-left:auto;display:flex;align-items:center;gap:1rem;font-size:.75rem;font-family:monospace;color:var(--muted);white-space:nowrap}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--local)}
+.status-dot.offline{background:var(--destructive)}
+.stat-group{display:flex;gap:.75rem}
+
+/* ── MAIN ──────────────────────────────────── */
+main{flex:1;padding:1.5rem;max-width:1000px;width:100%;margin:0 auto}
+.page{display:none;flex-direction:column;gap:1rem}
+.page.active{display:flex}
+.page-title{font-size:1rem;font-weight:600}
+.page-sub{font-size:.82rem;color:var(--muted);margin-top:.2rem}
+
+/* ── CARDS / INPUTS ────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem}
+input,textarea,select{background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.85rem;padding:.4rem .6rem;outline:none;width:100%}
+input:focus,textarea:focus,select:focus{border-color:var(--ring)}
+label span{font-size:.75rem;color:var(--muted);display:block;margin-bottom:.25rem}
+.btn{background:var(--primary);border:none;border-radius:6px;color:var(--primary-fg);cursor:pointer;font-size:.83rem;font-weight:500;padding:.45rem 1rem;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.4;cursor:default}
+.btn-ghost{background:none;border:1px solid var(--border);color:var(--text)}
+.btn-ghost:hover{background:rgba(255,255,255,.06);opacity:1}
+.btn-danger{background:none;border:1px solid rgba(239,68,68,.3);color:var(--destructive);font-size:.75rem;padding:.2rem .5rem;border-radius:4px}
+.btn-danger:hover{background:rgba(239,68,68,.1);opacity:1}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+.row{display:flex;align-items:center;gap:.5rem}
+.muted{color:var(--muted)}
+.mono{font-family:monospace}
+.err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:.5rem .75rem;font-size:.8rem;color:var(--destructive)}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(40px);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.5rem 1.25rem;font-size:.83rem;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:999}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err-toast{border-color:rgba(239,68,68,.4);color:var(--destructive)}
+
+/* ── CHAT ──────────────────────────────────── */
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 160px);gap:.75rem}
+.chat-legend{display:flex;align-items:center;gap:.75rem;font-size:.75rem;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:.3rem;border-radius:20px;padding:.15rem .5rem;font-size:.73rem;font-weight:500}
+.badge-local{background:rgba(34,197,94,.12);color:var(--local);border:1px solid rgba(34,197,94,.3)}
+.badge-cloud{background:rgba(245,158,11,.12);color:var(--cloud);border:1px solid rgba(245,158,11,.3)}
+.chat-log{flex:1;overflow-y:auto;background:rgba(26,31,46,.4);border:1px solid var(--border);border-radius:10px;padding:1rem;display:flex;flex-direction:column;gap:1rem}
+.chat-empty{display:flex;flex:1;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:.85rem}
+.msg-user{display:flex;justify-content:flex-end}
+.msg-user-bubble{background:var(--primary);color:var(--primary-fg);border-radius:10px;padding:.5rem .75rem;max-width:80%;font-size:.85rem;white-space:pre-wrap;line-height:1.5}
+.msg-ai{max-width:85%}
+.msg-ai-text{font-size:.85rem;white-space:pre-wrap;line-height:1.5}
+.msg-ai-footer{display:flex;align-items:center;gap:.5rem;margin-top:.35rem}
+.msg-thinking{font-family:monospace;font-size:.75rem;color:var(--muted)}
+.chat-input-row{display:flex;gap:.5rem}
+.chat-input-row textarea{resize:none;flex:1}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-top:.5rem}
+.photo-thumb{aspect-ratio:1;border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);background:var(--card)}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .2s}
+.photo-thumb:hover img{transform:scale(1.05)}
+
+/* ── MEMORY ────────────────────────────────── */
+.layer-tabs{display:flex;gap:.25rem;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px}
+.layer-tab{flex:1;background:none;border:none;color:var(--muted);padding:.4rem .5rem;border-radius:6px;cursor:pointer;font-size:.82rem;text-transform:capitalize;transition:all .15s}
+.layer-tab.active{background:rgba(255,255,255,.1);color:var(--text)}
+.mem-list{display:flex;flex-direction:column;gap:.5rem}
+.mem-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem}
+.mem-card p{font-size:.83rem;line-height:1.5;white-space:pre-wrap}
+.mem-footer{display:flex;align-items:center;gap:.6rem;margin-top:.5rem;font-size:.73rem;color:var(--muted);font-family:monospace}
+
+/* ── NOTES ─────────────────────────────────── */
+.notes-list{display:flex;flex-direction:column;gap:.5rem}
+.note-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;gap:.75rem}
+.note-body{flex:1}
+.note-text{font-size:.85rem;white-space:pre-wrap;line-height:1.5}
+.note-time{font-size:.72rem;color:var(--muted);margin-top:.3rem;font-family:monospace}
+
+/* ── SETTINGS ──────────────────────────────── */
+.comp-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:.6rem}
+.comp-name{font-family:monospace;font-size:.85rem;font-weight:600}
+.comp-desc{font-size:.78rem;color:var(--muted)}
+
+/* ── MODELS ────────────────────────────────── */
+.model-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.75rem;display:flex;align-items:center;justify-content:space-between}
+.model-name{font-family:monospace;font-size:.85rem}
+.model-size{font-size:.78rem;color:var(--muted)}
+
+/* ── PHONE SETUP ───────────────────────────── */
+.os-tabs{display:flex;gap:.5rem}
+.os-tab{flex:1;background:none;border:1px solid var(--border);border-radius:8px;padding:.5rem;font-size:.85rem;font-weight:500;cursor:pointer;color:var(--muted);transition:all .15s}
+.os-tab.active{border-color:var(--primary);background:rgba(99,102,241,.1);color:var(--primary)}
+.setup-step{display:flex;gap:.75rem;align-items:flex-start}
+.step-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:rgba(99,102,241,.2);color:var(--primary);font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:.1rem}
+.step-title{font-size:.85rem;font-weight:600}
+.step-body{font-size:.83rem;color:var(--muted);margin-top:.2rem;line-height:1.5}
+.url-box{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:.4rem .75rem;font-family:monospace;font-size:.85rem;color:var(--primary);word-break:break-all;margin:.4rem 0}
+
+/* ── LIGHTBOX ──────────────────────────────── */
+#lb{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;touch-action:none}
+#lb.open{display:flex}
+#lb-img{max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain;transform-origin:center;user-select:none;pointer-events:none}
+#lb-close{position:absolute;top:1rem;right:1rem;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:20px;padding:.3rem .75rem;cursor:pointer;font-size:.85rem}
+
+/* ── SCROLLBAR ─────────────────────────────── */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="#"><span class="logo-dot"></span>vespera</a>
+  <nav>
+    <button class="active" onclick="show('chat')">Chat</button>
+    <button onclick="show('memory')">Memory</button>
+    <button onclick="show('notes')">Notes</button>
+    <button onclick="show('apikeys')">API Keys</button>
+    <button onclick="show('models')">Models</button>
+    <button onclick="show('settings')">Settings</button>
+    <button onclick="show('phone')">📱 Phone</button>
+  </nav>
+  <div class="status-bar">
+    <span id="conn-dot" class="logo-dot status-dot"></span>
+    <span id="conn-label">connecting…</span>
+    <span class="stat-group" id="mem-stats"></span>
+  </div>
+</header>
+
+<main>
+  <!-- ── CHAT ──────────────────────────────── -->
+  <div class="page active" id="page-chat">
+    <div class="chat-wrap">
+      <div class="chat-legend">
+        <span>Key:</span>
+        <span class="badge badge-local">● local — free</span>
+        <span class="badge badge-cloud">● cloud — costs money</span>
+      </div>
+      <div class="chat-log" id="chat-log">
+        <div class="chat-empty" id="chat-empty">
+          <div><div class="mono" style="color:var(--text)">vespera</div><div style="margin-top:.3rem">Local persistent AI memory. Say something.</div></div>
+        </div>
+      </div>
+      <div id="chat-err" class="err" style="display:none"></div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" rows="2" placeholder="Message vespera…"></textarea>
+        <button class="btn" id="send-btn" onclick="sendChat()" style="align-self:flex-end">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MEMORY ─────────────────────────────── -->
+  <div class="page" id="page-memory">
+    <div><div class="page-title">Memory Layers</div><div class="page-sub">Persistent memory tiers from working to core.</div></div>
+    <div class="layer-tabs" id="layer-tabs">
+      <button class="layer-tab active" onclick="switchLayer('working')">Working <span id="lc-working" class="mono muted" style="font-size:.73rem"></span></button>
+      <button class="layer-tab" onclick="switchLayer('recent')">Recent <span id="lc-recent" class="mono muted" style="font-size:.73rem"></span></button>
+      <button class="layer-tab" onclick="switchLayer('validated')">Validated <span id="lc-validated" class="mono muted" style="font-size:.73rem"></span></button>
+      <button class="layer-tab" onclick="switchLayer('core')">Core <span id="lc-core" class="mono muted" style="font-size:.73rem"></span></button>
+    </div>
+    <div class="mem-list" id="mem-list"><p class="muted" style="font-size:.85rem">Loading…</p></div>
+  </div>
+
+  <!-- ── NOTES ─────────────────────────────── -->
+  <div class="page" id="page-notes">
+    <div><div class="page-title">Notes</div><div class="page-sub">Quick notes. Say <span class="mono">note: something</span> on Telegram to add one.</div></div>
+    <div class="row">
+      <input id="note-input" placeholder="Add a note…" onkeydown="if(event.key==='Enter')addNote()">
+      <button class="btn" onclick="addNote()" style="flex-shrink:0">Add</button>
+    </div>
+    <div id="notes-err" class="err" style="display:none"></div>
+    <div class="notes-list" id="notes-list"><p class="muted" style="font-size:.85rem">Loading…</p></div>
+  </div>
+
+  <!-- ── API KEYS ───────────────────────────── -->
+  <div class="page" id="page-apikeys">
+    <div><div class="page-title">API Keys</div><div class="page-sub">Set keys for each component. Keys are stored in your .env file.</div></div>
+    <div class="grid2" id="apikeys-list"><p class="muted" style="font-size:.85rem">Loading…</p></div>
+  </div>
+
+  <!-- ── MODELS ────────────────────────────── -->
+  <div class="page" id="page-models">
+    <div><div class="page-title">Models</div><div class="page-sub">Ollama models available on this machine.</div></div>
+    <div id="models-list"><p class="muted" style="font-size:.85rem">Loading…</p></div>
+    <div id="assign-section" style="display:none">
+      <div class="page-title" style="font-size:.9rem;margin-bottom:.5rem">Assign to components</div>
+      <div class="grid2" id="assign-list"></div>
+    </div>
+  </div>
+
+  <!-- ── SETTINGS ──────────────────────────── -->
+  <div class="page" id="page-settings">
+    <div class="row" style="align-items:flex-start;gap:1rem">
+      <div style="flex:1"><div class="page-title">Settings</div><div class="page-sub">Configure components and run maintenance.</div></div>
+      <div class="row" style="flex-shrink:0">
+        <span id="action-msg" class="muted" style="font-size:.8rem"></span>
+        <button class="btn btn-ghost" onclick="runAction('cleanup')">Run Cleanup</button>
+        <button class="btn btn-ghost" onclick="runAction('prune')">Run Pruning</button>
+      </div>
+    </div>
+    <div class="grid2" id="comps-list"><p class="muted" style="font-size:.85rem">Loading…</p></div>
+    <div id="sys-settings-wrap" style="display:none">
+      <div class="row" style="margin-bottom:.5rem">
+        <div style="flex:1"><div class="page-title" style="font-size:.9rem">System Settings</div><div class="page-sub">Tune Vespera's behaviour.</div></div>
+        <span id="sys-msg" class="muted" style="font-size:.8rem"></span>
+        <button class="btn" onclick="saveSysSettings()">Save</button>
+      </div>
+      <div class="grid2" id="sys-settings-list"></div>
+    </div>
+  </div>
+
+  <!-- ── PHONE SETUP ────────────────────────── -->
+  <div class="page" id="page-phone">
+    <div style="max-width:560px;display:flex;flex-direction:column;gap:1rem">
+      <div><div class="page-title">Install on Your Phone</div><div class="page-sub">No app store needed. Follow the steps below.</div></div>
+      <div class="card" style="gap:.5rem;display:flex;flex-direction:column">
+        <div style="font-size:.85rem;font-weight:600">Before you start</div>
+        <div class="page-sub">Your phone and this computer need to be on the same Wi-Fi, <em>or</em> you need <a href="https://tailscale.com" target="_blank" style="color:var(--primary)">Tailscale</a> on both.</div>
+        <div class="url-box" id="app-url">loading…</div>
+        <div class="page-sub">Type this into your phone's browser.</div>
+      </div>
+      <div class="os-tabs">
+        <button class="os-tab active" id="os-iphone" onclick="switchOS('iphone')">🍎 iPhone / iPad</button>
+        <button class="os-tab" id="os-android" onclick="switchOS('android')">🤖 Android</button>
+      </div>
+      <div id="steps-iphone" class="card" style="display:flex;flex-direction:column;gap:.85rem">
+        <div class="setup-step"><div class="step-num">1</div><div><div class="step-title">Open Safari</div><div class="step-body">Must be Safari — not Chrome. Look for the compass icon.</div></div></div>
+        <div class="setup-step"><div class="step-num">2</div><div><div class="step-title">Type the address</div><div class="step-body">Tap the address bar and type the address shown above. Tap <strong>Go</strong>.</div></div></div>
+        <div class="setup-step"><div class="step-num">3</div><div><div class="step-title">Tap the Share button</div><div class="step-body">At the bottom of Safari, tap the box-with-arrow icon (⬆).</div></div></div>
+        <div class="setup-step"><div class="step-num">4</div><div><div class="step-title">Tap "Add to Home Screen"</div><div class="step-body">Scroll down in the list and tap <strong>Add to Home Screen</strong>.</div></div></div>
+        <div class="setup-step"><div class="step-num">5</div><div><div class="step-title">Tap Add</div><div class="step-body">Top right corner — tap <strong>Add</strong>. Done! Vespera is on your home screen.</div></div></div>
+      </div>
+      <div id="steps-android" class="card" style="display:none;flex-direction:column;gap:.85rem">
+        <div class="setup-step"><div class="step-num">1</div><div><div class="step-title">Open Chrome</div><div class="step-body">Use Chrome (colorful circle icon). Install it from the Play Store if needed.</div></div></div>
+        <div class="setup-step"><div class="step-num">2</div><div><div class="step-title">Type the address</div><div class="step-body">Tap the address bar and type the address shown above. Tap <strong>Go</strong>.</div></div></div>
+        <div class="setup-step"><div class="step-num">3</div><div><div class="step-title">Tap the three-dot menu</div><div class="step-body">Top right corner of Chrome — tap ⋮</div></div></div>
+        <div class="setup-step"><div class="step-num">4</div><div><div class="step-title">Tap "Add to Home Screen"</div><div class="step-body">Find and tap <strong>Add to Home screen</strong>.</div></div></div>
+        <div class="setup-step"><div class="step-num">5</div><div><div class="step-title">Tap Add — you're done!</div><div class="step-body">Vespera appears on your home screen like any other app.</div></div></div>
+      </div>
+      <div class="card" style="gap:.4rem;display:flex;flex-direction:column">
+        <div style="font-size:.82rem;color:var(--muted);font-weight:600">Can't connect?</div>
+        <ul style="font-size:.82rem;color:var(--muted);padding-left:1.2rem;display:flex;flex-direction:column;gap:.25rem">
+          <li>Make sure Vespera is running on your computer.</li>
+          <li>Make sure your phone and computer are on the same Wi-Fi.</li>
+          <li>Away from home? Install Tailscale on both devices (free).</li>
+          <li>Double-check the address — one wrong character and it won't load.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- LIGHTBOX -->
+<div id="lb">
+  <button id="lb-close" onclick="closeLb()">✕</button>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<script>
+// ── Auth ────────────────────────────────────────────────
+let _token = localStorage.getItem('vespera_token') || '';
+function authHdr(){return _token?{'Authorization':'Bearer '+_token,'Content-Type':'application/json'}:{'Content-Type':'application/json'}}
+async function api(path,opts={}){
+  const r=await fetch(path,{...opts,headers:{...authHdr(),...(opts.headers||{})}});
+  if(r.status===401&&!_token){
+    _token=prompt('Enter API token (leave blank if none):','')??'';
+    localStorage.setItem('vespera_token',_token);
+    return api(path,opts);
+  }
+  return r;
+}
+async function apiJson(path,opts={}){const r=await api(path,opts);return r.json();}
+
+// ── Helpers ─────────────────────────────────────────────
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+let _toastT;
+function toast(msg,err){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast'+(err?' err-toast':'');
+  clearTimeout(_toastT);
+  requestAnimationFrame(()=>{el.classList.add('show');_toastT=setTimeout(()=>el.classList.remove('show'),2500)});
+}
+
+// ── Page switching ──────────────────────────────────────
+const PAGE_LOADERS={memory:loadMemory,notes:loadNotes,apikeys:loadApiKeys,models:loadModels,settings:loadSettings,phone:initPhone};
+let _curPage='chat';
+function show(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>{if(b.textContent.trim().replace('📱 ','').toLowerCase()===name||(name==='apikeys'&&b.textContent.includes('API'))||(name==='phone'&&b.textContent.includes('Phone')))b.classList.add('active')});
+  if(PAGE_LOADERS[name])PAGE_LOADERS[name]();
+  _curPage=name;
+}
+
+// ── Status poller ───────────────────────────────────────
+async function pollStatus(){
+  try{
+    const d=await apiJson('/api/status');
+    const dot=document.getElementById('conn-dot');
+    const lbl=document.getElementById('conn-label');
+    dot.classList.remove('offline');lbl.textContent='Connected · localhost:5055';
+    const mem=d.memory||{};
+    const stats=document.getElementById('mem-stats');
+    stats.innerHTML=['working','recent','validated','core'].map(l=>`<span><span class="muted">${l.charAt(0).toUpperCase()+l.slice(1)}</span> ${mem[l]??'—'}</span>`).join('');
+    // Update layer count badges
+    ['working','recent','validated','core'].forEach(l=>{const el=document.getElementById('lc-'+l);if(el)el.textContent=mem[l]!=null?mem[l]:''});
+  }catch{
+    document.getElementById('conn-dot').classList.add('offline');
+    document.getElementById('conn-label').textContent='Offline';
+  }
+}
+pollStatus();setInterval(pollStatus,5000);
+
+// ══════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════
+let _sending=false;
+const API_PORT=5055;
+
+async function loadHistory(){
+  try{
+    const d=await apiJson('/api/conversations?limit=50');
+    const msgs=Array.isArray(d)?d:(d.conversations||[]);
+    const reversed=[...msgs].reverse();
+    reversed.forEach(m=>appendMsg(m.role,m.content,!!m.used_cloud,m.complexity));
+  }catch{}
+}
+
+function appendMsg(role,content,cloud,complexity){
+  const log=document.getElementById('chat-log');
+  document.getElementById('chat-empty').style.display='none';
+  const div=document.createElement('div');
+  if(role==='user'){
+    div.className='msg-user';
+    div.innerHTML=`<div class="msg-user-bubble">${esc(content)}</div>`;
+  }else{
+    div.className='msg-ai';
+    const badge=cloud
+      ?`<span class="badge badge-cloud">● cloud</span>`
+      :`<span class="badge badge-local">● local</span>`;
+    const cxScore=complexity!=null?`<span class="mono muted" style="font-size:.73rem">${Number(complexity).toFixed(2)}</span>`:'';
+    div.innerHTML=`<p class="msg-ai-text">${esc(content)}</p><div class="msg-ai-footer">${badge}${cxScore}</div>`;
+  }
+  log.appendChild(div);
+  log.scrollTop=log.scrollHeight;
+}
+
+function showThinking(show){
+  let el=document.getElementById('thinking-msg');
+  if(show&&!el){el=document.createElement('p');el.id='thinking-msg';el.className='msg-thinking';el.textContent='thinking…';document.getElementById('chat-log').appendChild(el);}
+  else if(!show&&el)el.remove();
+  if(show)document.getElementById('chat-log').scrollTop=document.getElementById('chat-log').scrollHeight;
+}
+
+async function sendChat(){
+  const inp=document.getElementById('chat-input');
+  const text=inp.value.trim();
+  if(!text||_sending)return;
+  _sending=true;
+  document.getElementById('send-btn').disabled=true;
+  document.getElementById('chat-err').style.display='none';
+  inp.value='';
+  appendMsg('user',text,false,null);
+  showThinking(true);
+  try{
+    const d=await apiJson('/api/chat',{method:'POST',body:JSON.stringify({message:text})});
+    showThinking(false);
+    const cloud=d.handled_by==='cloud'||d.source==='cloud';
+    appendMsg('assistant',d.response||'(empty)',cloud,d.complexity);
+    if(d.audio){
+      const src=d.audio.startsWith('/')?d.audio:'/'+d.audio;
+      try{new Audio(src).play().catch(()=>{});}catch{}
+    }
+  }catch(e){
+    showThinking(false);
+    const err=document.getElementById('chat-err');
+    err.textContent=e.message||'Request failed';err.style.display='block';
+  }finally{_sending=false;document.getElementById('send-btn').disabled=false;inp.focus();}
+}
+
+document.getElementById('chat-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}
+});
+loadHistory();
+
+// ══════════════════════════════════════════════════════════
+//  MEMORY
+// ══════════════════════════════════════════════════════════
+let _memLayer='working';
+
+function switchLayer(l){
+  _memLayer=l;
+  document.querySelectorAll('.layer-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.layer-tab').forEach(b=>{if(b.textContent.trim().startsWith(l.charAt(0).toUpperCase()+l.slice(1)))b.classList.add('active')});
+  loadMemory();
+}
+
+async function loadMemory(){
+  const el=document.getElementById('mem-list');
+  el.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
+  try{
+    const d=await apiJson(`/api/memories?layer=${_memLayer}&limit=100`);
+    const items=d.memories||[];
+    if(!items.length){el.innerHTML='<p class="muted" style="font-size:.85rem;text-align:center;padding:2rem">No memories in this layer.</p>';return;}
+    el.innerHTML=items.map(m=>`
+      <div class="mem-card" data-id="${esc(m.id||'')}">
+        <p>${esc(m.content)}</p>
+        <div class="mem-footer">
+          ${m.trust_score!=null?`<span>trust <span style="color:var(--text)">${Number(m.trust_score).toFixed(2)}</span></span>`:''}
+          ${m.created_at?`<span>${new Date(m.created_at).toLocaleString()}</span>`:''}
+          <button class="btn-danger" style="margin-left:auto" onclick="deleteMem(this,'${esc(m.id||'')}')">Delete</button>
+        </div>
+      </div>`).join('');
+  }catch(e){el.innerHTML=`<p class="err">${esc(e.message)}</p>`}
+}
+
+async function deleteMem(btn,id){
+  if(!id)return;
+  if(!confirm('Delete this memory?'))return;
+  btn.textContent='…';btn.disabled=true;
+  try{
+    const r=await api(`/api/memories/${encodeURIComponent(id)}`,{method:'DELETE'});
+    if(!r.ok)throw new Error('failed');
+    btn.closest('.mem-card').remove();
+  }catch{btn.textContent='Delete';btn.disabled=false;toast('Delete failed',true);}
+}
+
+// ══════════════════════════════════════════════════════════
+//  NOTES
+// ══════════════════════════════════════════════════════════
+async function loadNotes(){
+  const el=document.getElementById('notes-list');
+  el.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
+  try{
+    const d=await apiJson('/api/notes');
+    const notes=Array.isArray(d)?d:(d.notes||[]);
+    if(!notes.length){el.innerHTML='<p class="muted" style="font-size:.85rem;text-align:center;padding:2rem">No notes yet.</p>';return;}
+    el.innerHTML=notes.map(n=>`
+      <div class="note-card">
+        <div class="note-body">
+          <div class="note-text">${esc(n.content||n.text||'')}</div>
+          ${n.created_at?`<div class="note-time">${new Date(n.created_at).toLocaleString()}</div>`:''}
+        </div>
+        <button class="btn-danger" onclick="deleteNote(this,'${esc(n.id||'')}')">✕</button>
+      </div>`).join('');
+  }catch(e){const err=document.getElementById('notes-err');err.textContent=e.message;err.style.display='block';}
+}
+
+async function addNote(){
+  const inp=document.getElementById('note-input');
+  const content=inp.value.trim();
+  if(!content)return;
+  try{
+    await api('/api/notes',{method:'POST',body:JSON.stringify({content})});
+    inp.value='';loadNotes();
+  }catch(e){toast(e.message||'Save failed',true);}
+}
+
+async function deleteNote(btn,id){
+  btn.disabled=true;
+  try{
+    await api(`/api/notes/${encodeURIComponent(id)}`,{method:'DELETE'});
+    btn.closest('.note-card').remove();
+  }catch{btn.disabled=false;toast('Delete failed',true);}
+}
+
+// ══════════════════════════════════════════════════════════
+//  API KEYS
+// ══════════════════════════════════════════════════════════
+const COMPONENTS=[
+  {name:'Cloud AI',desc:'Routes complex prompts to a hosted LLM (Claude, Groq, etc.)'},
+  {name:'Background Loop',desc:'Idle-time worker that consolidates memories.'},
+  {name:'Cleanup Crew',desc:'Removes duplicates and low-trust memories.'},
+  {name:'Periodic Pruning',desc:'Evicts stale memories below trust thresholds.'},
+  {name:'Handoff',desc:'Transfers context between local and cloud models.'},
+  {name:'Web Search',desc:'Fetches live results when a question needs the web.'},
+  {name:'Telegram',desc:'Bridges Vespera with a Telegram bot.'},
+  {name:'TTS/Voice',desc:'Generates spoken audio replies.'},
+];
+
+async function loadApiKeys(){
+  let liveComps=[];
+  try{const d=await apiJson('/api/components');liveComps=Array.isArray(d)?d:Object.values(d||{});}catch{}
+  const map={};liveComps.forEach(c=>map[c.name]=c);
+  const el=document.getElementById('apikeys-list');
+  el.innerHTML=COMPONENTS.map(c=>{
+    const live=map[c.name]||{};
+    const hasKey=!!live.api_key;
+    return `<div class="comp-card">
+      <div class="comp-name">${esc(c.name)}</div>
+      <div class="comp-desc">${esc(c.desc)}</div>
+      <label><span>API Key</span>
+        <div class="row" style="gap:.4rem">
+          <input type="password" id="key-${esc(c.name)}" placeholder="${hasKey?'●●●●●●●● (set)':'not set'}" style="flex:1">
+          <button class="btn btn-ghost" onclick="toggleShow('key-${esc(c.name)}',this)" style="flex-shrink:0;padding:.4rem .6rem">👁</button>
+        </div>
+      </label>
+      <button class="btn" onclick="saveKey('${esc(c.name)}','key-${esc(c.name)}',this)">Save</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleShow(id,btn){
+  const inp=document.getElementById(id);
+  inp.type=inp.type==='password'?'text':'password';
+}
+
+async function saveKey(name,inputId,btn){
+  const val=document.getElementById(inputId).value.trim();
+  if(!val){toast('Enter a key first',true);return;}
+  btn.disabled=true;btn.textContent='Saving…';
+  try{
+    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify({api_key:val})});
+    document.getElementById(inputId).value='';
+    btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);
+    toast('Saved');
+  }catch(e){btn.textContent='Save';btn.disabled=false;toast(e.message||'Failed',true);}
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODELS
+// ══════════════════════════════════════════════════════════
+let _models=[];
+async function loadModels(){
+  const el=document.getElementById('models-list');
+  el.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
+  try{
+    const d=await apiJson('/api/models');
+    _models=Array.isArray(d)?d:[];
+    if(!_models.length){el.innerHTML='<p class="muted" style="font-size:.85rem">No Ollama models found. Is Ollama running?</p>';return;}
+    el.innerHTML=`<div style="display:flex;flex-direction:column;gap:.4rem">`+_models.map(m=>`
+      <div class="model-card">
+        <span class="model-name">${esc(m.name)}</span>
+        <span class="model-size muted">${fmtSize(m.size)}</span>
+      </div>`).join('')+'</div>';
+    buildAssign();
+  }catch(e){el.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+}
+
+function fmtSize(s){
+  if(!s&&s!==0)return'—';
+  if(typeof s==='string')return s;
+  const gb=s/1e9;return gb>=1?gb.toFixed(2)+' GB':(s/1e6).toFixed(0)+' MB';
+}
+
+function buildAssign(){
+  const wrap=document.getElementById('assign-section');
+  const list=document.getElementById('assign-list');
+  const ASSIGNABLE=['Background Loop','Cleanup Crew','Periodic Pruning','Handoff'];
+  list.innerHTML=ASSIGNABLE.map(name=>`
+    <div class="comp-card">
+      <div class="comp-name">${esc(name)}</div>
+      <label><span>Assign model</span>
+        <select id="assign-${esc(name)}">
+          <option value="">— unchanged —</option>
+          ${_models.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')}
+        </select>
+      </label>
+      <button class="btn" onclick="assignModel('${esc(name)}',this)">Assign</button>
+    </div>`).join('');
+  wrap.style.display='block';
+}
+
+async function assignModel(name,btn){
+  const val=document.getElementById('assign-'+name).value;
+  if(!val)return;
+  btn.disabled=true;btn.textContent='Saving…';
+  try{
+    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify({model:val})});
+    btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Assign';btn.disabled=false;},2000);
+    toast('Model assigned');
+  }catch(e){btn.textContent='Assign';btn.disabled=false;toast(e.message||'Failed',true);}
+}
+
+// ══════════════════════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════════════════════
+let _sysSettings=[];
+
+async function loadSettings(){
+  const compsEl=document.getElementById('comps-list');
+  compsEl.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
+  try{
+    const d=await apiJson('/api/components');
+    const comps=Array.isArray(d)?d:Object.values(d||{});
+    compsEl.innerHTML=comps.map(c=>`
+      <div class="comp-card">
+        <div class="comp-name">${esc(c.name)}</div>
+        ${c.description?`<div class="comp-desc">${esc(c.description)}</div>`:''}
+        <label><span>Model</span><input id="sm-${esc(c.name)}" value="${esc(c.model||'')}"></label>
+        <label><span>API Key</span><input type="password" id="sk-${esc(c.name)}" placeholder="${c.api_key?'●●●●●●●● (set)':'not set'}"></label>
+        <button class="btn" onclick="saveComp('${esc(c.name)}',this)">Save</button>
+      </div>`).join('');
+  }catch(e){compsEl.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+
+  // System settings
+  try{
+    const d=await apiJson('/api/settings');
+    _sysSettings=d.settings||[];
+    if(_sysSettings.length){
+      const wrap=document.getElementById('sys-settings-wrap');
+      const list=document.getElementById('sys-settings-list');
+      list.innerHTML=_sysSettings.map(s=>`
+        <div class="card">
+          <label>
+            <div class="row" style="justify-content:space-between;margin-bottom:.25rem">
+              <span class="mono" style="font-size:.85rem;font-weight:600;color:var(--text)">${esc(s.label)}</span>
+              <span class="muted" style="font-size:.75rem">default: ${s.default}</span>
+            </div>
+            <div class="muted" style="font-size:.78rem;margin-bottom:.4rem">${esc(s.description)}</div>
+            <input type="number" id="sys-${esc(s.key)}" value="${s.value}" step="${s.type==='float'?.05:1}" ${s.type==='float'?'min="0" max="1"':''}>
+          </label>
+        </div>`).join('');
+      wrap.style.display='block';
+    }
+  }catch{}
+}
+
+async function saveComp(name,btn){
+  btn.disabled=true;btn.textContent='Saving…';
+  try{
+    const body={model:document.getElementById('sm-'+name).value};
+    const keyInp=document.getElementById('sk-'+name);
+    if(keyInp.value)body.api_key=keyInp.value;
+    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify(body)});
+    keyInp.value='';
+    btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);
+    toast('Saved');
+  }catch(e){btn.textContent='Save';btn.disabled=false;toast(e.message||'Failed',true);}
+}
+
+async function saveSysSettings(){
+  const body={};
+  _sysSettings.forEach(s=>{
+    const v=document.getElementById('sys-'+s.key)?.value;
+    if(v!=null)body[s.key]=s.type==='float'?parseFloat(v):parseInt(v,10);
+  });
+  const msg=document.getElementById('sys-msg');
+  try{
+    const r=await api('/api/settings',{method:'POST',body:JSON.stringify(body)});
+    if(!r.ok)throw new Error('failed');
+    msg.textContent='Saved';setTimeout(()=>msg.textContent='',2000);
+  }catch{msg.textContent='Save failed';}
+}
+
+async function runAction(kind){
+  const msg=document.getElementById('action-msg');
+  msg.textContent=kind+'…';
+  try{
+    await api(`/api/${kind}/run`,{method:'POST'});
+    msg.textContent=kind+' complete';
+  }catch(e){msg.textContent=e.message||'Failed';}
+  setTimeout(()=>msg.textContent='',3000);
+}
+
+// ══════════════════════════════════════════════════════════
+//  PHONE SETUP
+// ══════════════════════════════════════════════════════════
+function initPhone(){
+  const host=window.location.hostname;
+  document.getElementById('app-url').textContent=`http://${host}:5055/app`;
+}
+
+function switchOS(os){
+  document.getElementById('os-iphone').className='os-tab'+(os==='iphone'?' active':'');
+  document.getElementById('os-android').className='os-tab'+(os==='android'?' active':'');
+  document.getElementById('steps-iphone').style.display=os==='iphone'?'flex':'none';
+  document.getElementById('steps-android').style.display=os==='android'?'flex':'none';
+}
+
+// ══════════════════════════════════════════════════════════
+//  LIGHTBOX
+// ══════════════════════════════════════════════════════════
+function openLb(src){
+  document.getElementById('lb-img').src=src;
+  document.getElementById('lb').classList.add('open');
+}
+function closeLb(){
+  document.getElementById('lb').classList.remove('open');
+  document.getElementById('lb-img').src='';
+}
+document.getElementById('lb').addEventListener('click',e=>{if(e.target===e.currentTarget)closeLb();});
+</script>
+</body>
+</html>

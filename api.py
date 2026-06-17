@@ -822,6 +822,17 @@ def remove_note(note_id):
 # MOBILE APP
 # ─────────────────────────────────────────────
 
+@app.route("/")
+def desktop_ui():
+    """Serve the desktop web UI."""
+    from flask import send_file
+    from pathlib import Path as _Path
+    p = _Path(__file__).parent / "desktop.html"
+    if not p.exists():
+        return jsonify({"ok": False, "error": "Desktop UI not found"}), 404
+    return send_file(str(p), mimetype="text/html")
+
+
 @app.route("/app")
 def mobile_app():
     """Serve the mobile PWA interface."""
