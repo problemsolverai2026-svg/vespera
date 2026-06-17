@@ -504,11 +504,8 @@ async function loadApiKeys(){
         <div class="comp-name">${esc(prettyName(key))}</div>
         <div class="comp-desc">${esc(c.description||'')}</div>
         <div>
-          <div class="muted" style="font-size:.75rem;margin-bottom:.25rem">API Key</div>
-          <div class="row" style="gap:.4rem">
-            <input type="password" id="${safeId}" placeholder="${hasKey?'●●●●●●●● (set)':'not set'}" style="flex:1">
-            <button type="button" class="btn btn-ghost" onclick="toggleShow('${safeId}',this)" style="flex-shrink:0;padding:.4rem .6rem">👁</button>
-          </div>
+          <div class="muted" style="font-size:.75rem;margin-bottom:.25rem">API Key${hasKey?' <span style=\"color:var(--local);font-size:.7rem\">(set)</span>':''}</div>
+          <input type="text" id="${safeId}" placeholder="paste key here…" autocomplete="off" spellcheck="false">
         </div>
         <button type="button" class="btn" onclick="saveKey('${key}','${safeId}',this)">Save</button>
       </div>`;
@@ -516,10 +513,7 @@ async function loadApiKeys(){
   }catch(e){el.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
 }
 
-function toggleShow(id,btn){
-  const inp=document.getElementById(id);
-  inp.type=inp.type==='password'?'text':'password';
-}
+function toggleShow(id,btn){}  // no-op, kept for compatibility
 
 async function saveKey(apiKey,inputId,btn){
   const val=document.getElementById(inputId).value.trim();
@@ -612,7 +606,7 @@ async function loadSettings(){
         <div class="comp-name">${esc(prettyName(key))}</div>
         ${c.description?`<div class="comp-desc">${esc(c.description)}</div>`:''}
         <div><span class="muted" style="font-size:.75rem">Model</span><input id="sm_${safeId}" value="${esc(c.model||'')}" style="margin-top:.25rem"></div>
-        <div><span class="muted" style="font-size:.75rem">API Key</span><input type="password" id="sk_${safeId}" placeholder="${c.has_api_key?'●●●●●●●● (set)':'not set'}" style="margin-top:.25rem"></div>
+        <div><span class="muted" style="font-size:.75rem">API Key${c.has_api_key?' <span style=\"color:var(--local);font-size:.7rem\">(set)</span>':''}</span><input type="text" id="sk_${safeId}" placeholder="paste key here…" autocomplete="off" spellcheck="false" style="margin-top:.25rem"></div>
         <button class="btn" onclick="saveComp('${key}','${safeId}',this)">Save</button>
       </div>`;
     }).join('');
