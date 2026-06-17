@@ -15,6 +15,7 @@ import { Route as NotesRouteImport } from './routes/notes'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
+import { Route as PhoneSetupRouteImport } from './routes/phone-setup'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -47,6 +48,11 @@ const ApiKeysRoute = ApiKeysRouteImport.update({
   path: '/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PhoneSetupRoute = PhoneSetupRouteImport.update({
+  id: '/phone-setup',
+  path: '/phone-setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
   '/notes': typeof NotesRoute
+  '/phone-setup': typeof PhoneSetupRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
   '/notes': typeof NotesRoute
+  '/phone-setup': typeof PhoneSetupRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/memory': typeof MemoryRoute
   '/models': typeof ModelsRoute
   '/notes': typeof NotesRoute
+  '/phone-setup': typeof PhoneSetupRoute
   '/resources': typeof ResourcesRoute
   '/settings': typeof SettingsRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/memory'
     | '/models'
     | '/notes'
+    | '/phone-setup'
     | '/resources'
     | '/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/memory'
     | '/models'
     | '/notes'
+    | '/phone-setup'
     | '/resources'
     | '/settings'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/memory'
     | '/models'
     | '/notes'
+    | '/phone-setup'
     | '/resources'
     | '/settings'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   MemoryRoute: typeof MemoryRoute
   ModelsRoute: typeof ModelsRoute
   NotesRoute: typeof NotesRoute
+  PhoneSetupRoute: typeof PhoneSetupRoute
   ResourcesRoute: typeof ResourcesRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -165,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/phone-setup': {
+      id: '/phone-setup'
+      path: '/phone-setup'
+      fullPath: '/phone-setup'
+      preLoaderRoute: typeof PhoneSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   MemoryRoute: MemoryRoute,
   ModelsRoute: ModelsRoute,
   NotesRoute: NotesRoute,
+  PhoneSetupRoute: PhoneSetupRoute,
   ResourcesRoute: ResourcesRoute,
   SettingsRoute: SettingsRoute,
 }

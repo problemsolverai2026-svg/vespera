@@ -17,6 +17,7 @@ function MemoryPage() {
   const [memStats, setMemStats] = useState<MemoryStats>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | number | null>(null);
 
   useEffect(() => {
     vespera.status().then((s) => setMemStats(s.memory ?? {})).catch(() => {});
@@ -77,27 +78,49 @@ function MemoryPage() {
         )}
 
         <div className="space-y-2">
-          {items.map((m, i) => (
-            <div
-              key={m.id ?? i}
-              className="rounded-lg border border-border bg-card p-3"
-            >
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs font-mono text-muted-foreground">
-                {m.trust_score !== undefined && (
-                  <span>
-                    trust{" "}
-                    <span className="text-foreground">
-                      {Number(m.trust_score).toFixed(2)}
+          {items.map((m, i) => {
+            const key = m.id ?? i;
+            const isDel = deleting === key;
+            return (
+              <div
+                key={key}
+                className="rounded-lg border border-border bg-card p-3"
+              >
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
+                <div className="mt-2 flex items-center gap-3 text-xs font-mono text-muted-foreground">
+                  {m.trust_score !== undefined && (
+                    <span>
+                      trust{" "}
+                      <span className="text-foreground">
+                        {Number(m.trust_score).toFixed(2)}
+                      </span>
                     </span>
-                  </span>
-                )}
-                {m.created_at && (
-                  <span>{new Date(m.created_at).toLocaleString()}</span>
-                )}
+                  )}
+                  {m.created_at && (
+                    <span>{new Date(m.created_at).toLocaleString()}</span>
+                  )}
+                  <button
+                    className="ml-auto rounded px-2 py-0.5 text-xs text-destructive border border-destructive/30 hover:bg-destructive/10 disabled:opacity-40 transition-colors"
+                    disabled={isDel || m.id == null}
+                    onClick={async () => {
+                      if (m.id == null) return;
+                      setDeleting(key);
+                      try {
+                        await vespera.deleteMemory(m.id);
+                        setItems((prev) => prev.filter((x) => x.id !== m.id));
+                      } catch {
+                        setError("Delete failed");
+                      } finally {
+                        setDeleting(null);
+                      }
+                    }}
+                  >
+                    {isDel ? "…" : "Delete"}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </AppShell>

@@ -34,49 +34,56 @@ It's local-first by design. Your data stays on your machine. Cloud AI is optiona
 
 ## What You Need
 
-### Required
-- A Mac or Linux computer that stays on
-- [Python 3.10+](https://www.python.org/downloads/)
-- [Node.js 18+](https://nodejs.org) — for the web UI
-
-### Optional (all free)
-- [Ollama](https://ollama.ai) — runs the local AI model; if not installed, Vespera falls back to cloud-only mode automatically
-- [Telegram](https://telegram.org) — to text Vespera from your phone
-- [Groq API key](https://console.groq.com) — free cloud AI for smarter responses
-- [Brave Search API key](https://brave.com/search/api/) — better web search (2,000 free searches/month)
+- A **Mac or Linux computer** that can stay on (Windows support coming soon)
+- **[Python 3.10+](https://www.python.org/downloads/)** — free, takes 2 minutes to install
+- **[Node.js 18+](https://nodejs.org)** — free, powers the web interface
+- That's it. The installer handles the rest.
 
 ---
 
 ## Installation
 
-### Step 1 — Install the prerequisites
+### Step 1 — Download Vespera
 
-- **[Ollama](https://ollama.ai)** — download, install, and open it
-- **[Python 3.10+](https://www.python.org/downloads/)**
-- **[Node.js 18+](https://nodejs.org)**
+Click the green **Code** button at the top of this page → **Download ZIP**.
 
-### Step 2 — Clone and run setup
+Unzip the file. You'll get a folder called `vespera-main`.
+
+### Step 2 — Open a Terminal
+
+**On Mac:** Press `Command + Space`, type `Terminal`, hit Enter.
+
+**On Linux:** Right-click the desktop → Open Terminal (varies by distro).
+
+### Step 3 — Run the installer
+
+In the terminal, type these two lines (one at a time, press Enter after each):
 
 ```bash
-git clone https://github.com/problemsolverai2026-svg/vespera.git
-cd vespera
-chmod +x setup.sh start.sh
-./setup.sh
+cd ~/Downloads/vespera-main
+./install.sh
 ```
 
-`setup.sh` handles everything: installs Python and UI dependencies, pulls the default Ollama model, creates your `.env`, and optionally sets up auto-start on boot.
+The installer will walk you through everything — including downloading the AI model (about 2 GB, one time only). Just follow the prompts.
 
-### Step 3 — Start Vespera
+### Step 4 — Start Vespera
 
 ```bash
 ./start.sh
 ```
 
-Open your browser to **http://localhost:3055**
+Then open your browser and go to **http://localhost:3055**
 
-If port 3055 or 5055 is already in use, Vespera automatically picks the next available port.
+That's it. You're running your own private AI.
 
-> **Backend only?** Skip the UI — run `python3 main.py` and `python3 api.py` directly. Telegram and the API still work.
+---
+
+### 📱 Install on your phone
+
+Once Vespera is running, go to **http://localhost:3055/phone-setup** in your browser.
+It will show you step-by-step instructions for your phone (iPhone or Android) — no app store needed.
+
+> **Advanced:** Backend only? Run `python3 api.py` and `python3 main.py` directly. Telegram and the API still work.
 
 ---
 

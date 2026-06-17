@@ -10,6 +10,7 @@ const nav = [
   { to: "/models", label: "Models" },
   { to: "/resources", label: "Resources" },
   { to: "/settings", label: "Settings" },
+  { to: "/phone-setup", label: "📱 Phone" },
 ] as const;
 
 function StatusBar() {

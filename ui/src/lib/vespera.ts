@@ -112,6 +112,8 @@ export const vespera = {
       method: "POST",
       body: JSON.stringify({ content }),
     }),
+  deleteMemory: (id: string | number) =>
+    req<{ ok: boolean }>(`/api/memories/${encodeURIComponent(String(id))}`, { method: "DELETE" }),
   deleteNote: (id: string) =>
     req<{ deleted: boolean }>(`/api/notes/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
