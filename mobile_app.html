@@ -293,25 +293,32 @@ function renderChat() {
 }
 
 function renderBotMsg(text) {
-  // Render photo thumbnails inline when response contains photo results
   const lines = text.split('\n');
   const out = [];
   let inPhotoSection = false;
   for (const line of lines) {
-    const photoMatch = line.match(/\[(\w{8})\w*\]\s*(.+?)\s+\((.+?)\)/);
-    if (line.includes('📷') && line.includes('Photo')) {
+    const photoMatch = line.match(/\[(\w{8,36})\]\s*(.+?)\s+\((.+?)\)/);
+    if (line.includes('\u{1F4F7}') && line.toLowerCase().includes('photo')) {
       inPhotoSection = true;
       out.push('<strong>' + esc(line) + '</strong>');
       continue;
     }
-    if (line.includes('📝') || line.includes('🎥')) {
+    if (line.includes('\u{1F4DD}') || line.includes('\u{1F3A5}')) {
       inPhotoSection = false;
     }
     if (inPhotoSection && photoMatch) {
       const id = photoMatch[1];
-      const caption = photoMatch[2];
-      const date = photoMatch[3];
-      out.push('<div style="margin:.4rem 0"><img src="/api/photos/' + id + '/image" style="width:100%;max-width:240px;border-radius:6px;display:block;cursor:pointer" onclick="openLb('photo','' + id + '','' + esc(caption) + '')" /><div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem">' + esc(caption) + ' · ' + esc(date) + '</div></div>');
+      const caption = photoMatch[2] || '';
+      const date = photoMatch[3] || '';
+      const imgUrl = '/api/photos/' + id + '/image';
+      out.push(
+        '<div style="margin:.5rem 0">' +
+        '<a href="' + imgUrl + '" target="_blank">' +
+        '<img src="' + imgUrl + '" style="width:100%;max-width:220px;border-radius:6px;display:block" loading="lazy" />' +
+        '</a>' +
+        '<div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem">' + esc(caption) + ' &middot; ' + esc(date) + '</div>' +
+        '</div>'
+      );
     } else {
       out.push(esc(line));
     }
