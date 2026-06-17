@@ -240,6 +240,14 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
     const el = containerRef.current;
     if (!el) return;
 
+    // iOS intercepts pinch gestures for page zoom unless we lock the viewport.
+    // Temporarily set user-scalable=no while the lightbox is open.
+    const metaViewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    const origViewport = metaViewport?.getAttribute('content') ?? '';
+    if (metaViewport) {
+      metaViewport.setAttribute('content', 'width=device-width, initial-scale=1, user-scalable=no');
+    }
+
     let scale = 1, tx = 0, ty = 0;
     let lastDist = 0;
     let startX = 0, startY = 0;
@@ -346,6 +354,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
+      if (metaViewport) metaViewport.setAttribute('content', origViewport);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
