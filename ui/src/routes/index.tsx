@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import AppShell from "@/components/AppShell";
 import { vespera, API_BASE } from "@/lib/vespera";
 
@@ -224,24 +224,130 @@ function PhotoGrid({ photos }: { photos: PhotoItem[] }) {
       </div>
 
       {lightbox && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <img
-            src={lightbox}
-            alt="photo"
-            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-sm text-white hover:bg-black/80"
-            onClick={() => setLightbox(null)}
-          >
-            ✕
-          </button>
-        </div>
+        <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
       )}
     </>
+  );
+}
+
+function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const scale = useRef(1);
+  const tx = useRef(0);
+  const ty = useRef(0);
+  const lastDist = useRef<number | null>(null);
+  const lastTouch = useRef<{ x: number; y: number } | null>(null);
+  const lastTap = useRef(0);
+
+  const applyTransform = useCallback(() => {
+    if (!imgRef.current) return;
+    imgRef.current.style.transform = `translate(${tx.current}px, ${ty.current}px) scale(${scale.current})`;
+  }, []);
+
+  const clampTranslation = useCallback(() => {
+    if (!imgRef.current) return;
+    const img = imgRef.current;
+    const w = img.naturalWidth * scale.current;
+    const h = img.naturalHeight * scale.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const maxX = Math.max(0, (w - vw) / 2);
+    const maxY = Math.max(0, (h - vh) / 2);
+    tx.current = Math.min(maxX, Math.max(-maxX, tx.current));
+    ty.current = Math.min(maxY, Math.max(-maxY, ty.current));
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      lastDist.current = Math.hypot(dx, dy);
+      lastTouch.current = null;
+    } else if (e.touches.length === 1) {
+      lastTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      lastDist.current = null;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 2 && lastDist.current !== null) {
+      // Pinch zoom
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.hypot(dx, dy);
+      const delta = dist / lastDist.current;
+      scale.current = Math.min(8, Math.max(1, scale.current * delta));
+      lastDist.current = dist;
+      clampTranslation();
+      applyTransform();
+    } else if (e.touches.length === 1 && lastTouch.current && scale.current > 1) {
+      // Pan when zoomed
+      const dx = e.touches[0].clientX - lastTouch.current.x;
+      const dy = e.touches[0].clientY - lastTouch.current.y;
+      tx.current += dx;
+      ty.current += dy;
+      lastTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      clampTranslation();
+      applyTransform();
+    }
+  }, [applyTransform, clampTranslation]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    // Double-tap to reset zoom
+    if (e.changedTouches.length === 1 && scale.current === 1) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) {
+        scale.current = 1;
+        tx.current = 0;
+        ty.current = 0;
+        applyTransform();
+      }
+      lastTap.current = now;
+    }
+    if (e.touches.length < 2) lastDist.current = null;
+    if (e.touches.length < 1) lastTouch.current = null;
+  }, [applyTransform]);
+
+  const handleBackdropTap = useCallback(() => {
+    if (scale.current > 1) {
+      // First tap when zoomed: reset zoom instead of closing
+      scale.current = 1;
+      tx.current = 0;
+      ty.current = 0;
+      applyTransform();
+    } else {
+      onClose();
+    }
+  }, [applyTransform, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+      onClick={handleBackdropTap}
+      style={{ touchAction: "none" }}
+    >
+      <img
+        ref={imgRef}
+        src={src}
+        alt="photo"
+        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl select-none"
+        style={{ transformOrigin: "center center", willChange: "transform", touchAction: "none" }}
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        draggable={false}
+      />
+      <button
+        className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-sm text-white hover:bg-black/80"
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+      >
+        ✕
+      </button>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70">
+        Pinch to zoom · drag to pan · tap to close
+      </div>
+    </div>
   );
 }
