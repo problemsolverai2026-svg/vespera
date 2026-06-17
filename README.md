@@ -36,8 +36,9 @@ It's local-first by design. Your data stays on your machine. Cloud AI is optiona
 
 - A **Mac or Linux computer** that can stay on (Windows support coming soon)
 - **[Python 3.10+](https://www.python.org/downloads/)** — free, takes 2 minutes to install
-- **[Node.js 18+](https://nodejs.org)** — free, powers the web interface
 - That's it. The installer handles the rest.
+
+> **Node.js is optional.** Vespera includes a built-in web UI that runs without it. If you have Node.js installed, a more feature-rich React UI is also available.
 
 ---
 
@@ -72,7 +73,7 @@ The installer will walk you through everything — including downloading the AI 
 ./start.sh
 ```
 
-Then open your browser and go to **http://localhost:3055**
+Your browser will open automatically. Or navigate to **http://localhost:5055** manually.
 
 That's it. You're running your own private AI.
 
@@ -80,8 +81,8 @@ That's it. You're running your own private AI.
 
 ### 📱 Install on your phone
 
-Once Vespera is running, go to **http://localhost:3055/phone-setup** in your browser.
-It will show you step-by-step instructions for your phone (iPhone or Android) — no app store needed.
+Once Vespera is running, open **http://localhost:5055** and click the **📱 Phone** tab.
+It shows step-by-step instructions for iPhone and Android — no app store needed.
 
 > **Advanced:** Backend only? Run `python3 api.py` and `python3 main.py` directly. Telegram and the API still work.
 
@@ -95,8 +96,8 @@ Edit `.env` to add optional features. Everything works out of the box with no ke
 
 Vespera's web UI works in any mobile browser — no app install needed.
 
-- **Same WiFi:** Find your computer's local IP (`System Settings → Wi-Fi → Details` on Mac, or `hostname -I` on Linux), then open `http://<your-ip>:3055` on your phone.
-- **From anywhere (Tailscale):** Install [Tailscale](https://tailscale.com) on both your computer and phone (free). Once connected, open `http://<tailscale-ip>:3055` on your phone — works on any network, not just home WiFi.
+- **Same WiFi:** Find your computer's local IP (`System Settings → Wi-Fi → Details` on Mac, or `hostname -I` on Linux), then open `http://<your-ip>:5055` on your phone.
+- **From anywhere (Tailscale):** Install [Tailscale](https://tailscale.com) on both your computer and phone (free). Once connected, open `http://<tailscale-ip>:5055` on your phone — works on any network, not just home WiFi.
 
 Your Tailscale IP can be found at [login.tailscale.com](https://login.tailscale.com) or by running `tailscale ip` in a terminal.
 
@@ -126,9 +127,9 @@ Then set `BACKGROUND_OLLAMA_MODEL=qwen2.5:7b` in `.env`.
 
 ### macOS (LaunchAgents)
 
-**Recommended:** run `./setup.sh` — it will ask whether to set up auto-start and handles the path substitution automatically.
+**Recommended:** run `./install.sh` — it will ask whether to set up auto-start and handles the path substitution automatically.
 
-**Manual (if you skipped setup.sh):**
+**Manual (if you skipped install.sh):**
 ```bash
 # Substitute your actual path into the plist files first:
 for plist in launchagents/*.plist; do
@@ -145,8 +146,8 @@ Vespera starts automatically every time your Mac turns on.
 ```bash
 cp systemd/*.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable vespera-main vespera-api vespera-telegram vespera-ui
-systemctl --user start vespera-main vespera-api vespera-telegram vespera-ui
+systemctl --user enable vespera-main vespera-api vespera-telegram
+systemctl --user start vespera-main vespera-api vespera-telegram
 ```
 
 ---
@@ -285,7 +286,7 @@ Sign up at [console.groq.com](https://console.groq.com) — no credit card requi
 - **Windows is untested** — may work but not supported yet
 - **Requires Ollama** — no cloud-only mode without a local model
 - **Long-run stability** — not yet tested beyond a few days; memory growth and resource use over weeks is unknown
-- **UI is basic** — shipped but may need polish in places
+- **UI is desktop-first** — use the mobile PWA (`/app`) for the best phone experience
 - **No automated tests** — unit tests not yet written, though the codebase underwent 15+ rounds of parallel AI security audit (60+ issues fixed) before release. Contributions welcome.
 - **Telegram reminders require `TELEGRAM_ALLOWED_USERS` to be set** — bot denies all access by default for security
 
