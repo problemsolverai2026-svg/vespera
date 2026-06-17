@@ -239,8 +239,9 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    // Attach to window — bypasses any ref/portal timing issues entirely.
+    // The lightbox covers the full screen so all touches route here anyway.
+    const el = window;
 
     let scale = 1, tx = 0, ty = 0;
     let gestureStartScale = 1;
@@ -380,7 +381,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         1.0x
       </div>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 pointer-events-none select-none">
-        Pinch to zoom · drag to pan · tap to close · v6
+        Pinch to zoom · drag to pan · tap to close · v7
       </div>
     </div>,
     document.body
