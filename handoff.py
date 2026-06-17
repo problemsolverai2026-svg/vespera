@@ -537,11 +537,11 @@ _PHOTO_SEARCH_CHECK = re.compile(
 )
 # Unified cross-type search (notes + photos)
 _UNIFIED_SEARCH_CHECK = re.compile(
-    r"\bfind\s+(?:everything|all)\s+(?:about|on|for|related\s+to|that\s+(?:has|have)\s+to\s+do\s+with|regarding|concerning|involving)\s+(.+)"
-    r"|\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for|related\s+to|regarding)\s+(.+)"
+    r"(?:can\s+you\s+|please\s+)?\bfind\s+(?:everything|all)\s+(?:about|on|for|with|related\s+to|that\s+(?:has|have)\s+to\s+do\s+with|regarding|concerning|involving)\s+(.+)"
+    r"|(?:can\s+you\s+|please\s+)?\bshow\s+(?:me\s+)?(?:everything|all)\s+(?:about|on|for|with|related\s+to|regarding)\s+(.+)"
     r"|\blook\s+up\s+(.+)"
     r"|\bsearch\s+(?:for\s+)?(?:everything\s+(?:about|on)\s+)?(.+)\s+(?:in\s+(?:notes?|photos?|everything))"
-    r"|\bfind\s+(?:everything|all)\s+(.+)",
+    r"|(?:can\s+you\s+|please\s+)?\bfind\s+(?:everything|all)\s+(.+)",
     re.IGNORECASE,
 )
 
@@ -766,6 +766,9 @@ def _handle_unified_search(message: str) -> dict | None:
     query = re.sub(r'^(?:with|about|for|on|regarding|concerning|involving|related\s+to|that\s+has\s+to\s+do\s+with)\s+', '', query, flags=re.IGNORECASE).strip()
     # Strip trailing filler words (e.g. "please", "thanks", "for me")
     query = re.sub(r'\s+(?:please|thanks|thank\s+you|for\s+me|now)$', '', query, flags=re.IGNORECASE).strip()
+    # Voice Control sometimes transcribes instrument letter 'I' as 'a' (e.g. 'a 069' -> 'I069')
+    # If query looks like 'a NNN', also try 'INNN'
+    query = re.sub(r'^a\s+(\d)', r'I\1', query)
     if not query:
         return None
     from notes import search_notes, init_notes_db
