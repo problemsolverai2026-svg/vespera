@@ -287,9 +287,36 @@ function renderChat() {
     return;
   }
   el.innerHTML = chatMessages.map(m =>
-    `<div class="msg ${m.role}${m.thinking?' thinking':''}">${esc(m.content)}</div>`
+    `<div class="msg ${m.role}${m.thinking?' thinking':''}">${m.role==='assistant' ? renderBotMsg(m.content) : esc(m.content)}</div>`
   ).join('');
   el.scrollTop = el.scrollHeight;
+}
+
+function renderBotMsg(text) {
+  // Render photo thumbnails inline when response contains photo results
+  const lines = text.split('\n');
+  const out = [];
+  let inPhotoSection = false;
+  for (const line of lines) {
+    const photoMatch = line.match(/\[(\w{8})\w*\]\s*(.+?)\s+\((.+?)\)/);
+    if (line.includes('📷') && line.includes('Photo')) {
+      inPhotoSection = true;
+      out.push('<strong>' + esc(line) + '</strong>');
+      continue;
+    }
+    if (line.includes('📝') || line.includes('🎥')) {
+      inPhotoSection = false;
+    }
+    if (inPhotoSection && photoMatch) {
+      const id = photoMatch[1];
+      const caption = photoMatch[2];
+      const date = photoMatch[3];
+      out.push('<div style="margin:.4rem 0"><img src="/api/photos/' + id + '/image" style="width:100%;max-width:240px;border-radius:6px;display:block;cursor:pointer" onclick="openLb('photo','' + id + '','' + esc(caption) + '')" /><div style="font-size:.75rem;color:#94a3b8;margin-top:.2rem">' + esc(caption) + ' · ' + esc(date) + '</div></div>');
+    } else {
+      out.push(esc(line));
+    }
+  }
+  return out.join('\n');
 }
 
 async function sendChat() {
