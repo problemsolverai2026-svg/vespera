@@ -133,16 +133,28 @@ def update_photo_caption(photo_id: str, caption: str) -> bool:
 
 def search_photos(query: str, limit: int = 20) -> list:
     """Search photos by caption keyword (case-insensitive)."""
+    import re as _re
     query = query.strip()
     if not query:
         return []
+    # Normalize: collapse spaces between letter+digits (e.g. 'I 113' -> 'I113')
+    query_norm = _re.sub(r'([A-Za-z])\s+(\d)', r'\1\2', query)
+    query_norm = _re.sub(r'(\d)\s+([A-Za-z])', r'\1\2', query_norm)
     limit = max(1, min(int(limit), 500))
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM photos WHERE LOWER(caption) LIKE LOWER(?) ORDER BY created_at DESC LIMIT ?",
-            (f"%{query}%", limit),
-        ).fetchall()
-    return [dict(r) for r in rows]
+        patterns = list({f"%{query}%", f"%{query_norm}%"})  # deduplicate
+        seen = set()
+        results = []
+        for pat in patterns:
+            rows = conn.execute(
+                "SELECT * FROM photos WHERE LOWER(caption) LIKE LOWER(?) ORDER BY created_at DESC LIMIT ?",
+                (pat, limit),
+            ).fetchall()
+            for r in rows:
+                if r['id'] not in seen:
+                    seen.add(r['id'])
+                    results.append(dict(r))
+    return results
 
 
 def photo_path(filename: str) -> Path:
