@@ -234,6 +234,7 @@ function PhotoGrid({ photos }: { photos: PhotoItem[] }) {
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const scaleDisplayRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -243,6 +244,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
 
     let scale = 1, tx = 0, ty = 0;
     let gestureStartScale = 1;
+    let lastDist = 0;
     let panStartX = 0, panStartY = 0;
     let panning = false;
     let lastTap = 0;
@@ -252,44 +254,60 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       const img = imgRef.current;
       if (!img) return;
       img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      if (scaleDisplayRef.current) {
+        scaleDisplayRef.current.textContent = `${scale.toFixed(1)}x`;
+        scaleDisplayRef.current.style.opacity = scale > 1.05 ? '1' : '0';
+      }
     };
 
-    // ── Safari / WKWebView proprietary gesture events ──────────────────
-    // These fire from inside WebKit's own gesture engine and are the only
-    // reliable way to intercept pinch-to-zoom on iOS (incl. standalone PWA).
+    // ── Path A: Safari/WebKit gesture events ─────────────────────────────
+    // gesturechange.scale is relative to gesture start, not previous event.
     const onGestureStart = (e: Event) => {
       e.preventDefault();
       gestureStartScale = scale;
     };
-
     const onGestureChange = (e: Event) => {
       e.preventDefault();
       const ge = e as any;
       scale = Math.min(8, Math.max(1, gestureStartScale * ge.scale));
       applyTransform();
     };
-
     const onGestureEnd = (e: Event) => {
       e.preventDefault();
       if (scale < 1) { scale = 1; tx = 0; ty = 0; applyTransform(); }
     };
 
-    // ── Touch events for single-finger pan + tap-to-close ──────────────
+    // ── Path B: touch events — pinch fallback + pan + tap ───────────────
+    // Handles pinch for any env where gesture events don't fire.
     const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
       hasMoved = false;
-      if (e.touches.length === 1) {
+      if (e.touches.length === 2) {
+        panning = false;
+        lastDist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+      } else if (e.touches.length === 1) {
         panning = true;
         panStartX = e.touches[0].clientX;
         panStartY = e.touches[0].clientY;
-      } else {
-        panning = false;
       }
     };
-
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       hasMoved = true;
-      if (e.touches.length === 1 && panning && scale > 1) {
+      if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        if (lastDist > 0) {
+          scale = Math.min(8, Math.max(1, scale * (dist / lastDist)));
+        }
+        lastDist = dist;
+        applyTransform();
+      } else if (e.touches.length === 1 && panning && scale > 1) {
         tx += e.touches[0].clientX - panStartX;
         ty += e.touches[0].clientY - panStartY;
         panStartX = e.touches[0].clientX;
@@ -300,9 +318,10 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         panStartY = e.touches[0].clientY;
       }
     };
-
     const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
       panning = false;
+      lastDist = 0;
       if (e.touches.length === 0 && !hasMoved) {
         const now = Date.now();
         if (now - lastTap < 300) {
@@ -319,10 +338,10 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
     el.addEventListener('gesturestart', onGestureStart, { passive: false });
     el.addEventListener('gesturechange', onGestureChange, { passive: false });
     el.addEventListener('gestureend', onGestureEnd, { passive: false });
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
       el.removeEventListener('gesturestart', onGestureStart);
@@ -357,8 +376,11 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       >
         ✕
       </button>
+      <div ref={scaleDisplayRef} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none text-white font-bold opacity-0" style={{ fontSize: '48px', textShadow: '0 0 8px black' }}>
+        1.0x
+      </div>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 pointer-events-none select-none">
-        Pinch to zoom · drag to pan · tap to close · v5
+        Pinch to zoom · drag to pan · tap to close · v6
       </div>
     </div>,
     document.body
