@@ -241,20 +241,12 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
     const el = containerRef.current;
     if (!el) return;
 
-    // iOS intercepts pinch gestures for page zoom unless we lock the viewport.
-    // Temporarily set user-scalable=no while the lightbox is open.
-    const metaViewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
-    const origViewport = metaViewport?.getAttribute('content') ?? '';
-    if (metaViewport) {
-      metaViewport.setAttribute('content', 'width=device-width, initial-scale=1, user-scalable=no');
-    }
-
     let scale = 1, tx = 0, ty = 0;
-    let lastDist = 0;
-    let startX = 0, startY = 0;
-    let moved = false;
-    let pinching = false;
+    let gestureStartScale = 1;
+    let panStartX = 0, panStartY = 0;
+    let panning = false;
     let lastTap = 0;
+    let hasMoved = false;
 
     const applyTransform = () => {
       const img = imgRef.current;
@@ -262,100 +254,80 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
     };
 
-    const clampPan = () => {
-      if (scale <= 1) { tx = 0; ty = 0; return; }
-      const img = imgRef.current;
-      if (!img) return;
-      const rect = img.getBoundingClientRect();
-      const maxX = Math.max(0, (rect.width * (scale - 1)) / (2 * scale));
-      const maxY = Math.max(0, (rect.height * (scale - 1)) / (2 * scale));
-      tx = Math.min(maxX, Math.max(-maxX, tx));
-      ty = Math.min(maxY, Math.max(-maxY, ty));
+    // ── Safari / WKWebView proprietary gesture events ──────────────────
+    // These fire from inside WebKit's own gesture engine and are the only
+    // reliable way to intercept pinch-to-zoom on iOS (incl. standalone PWA).
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureStartScale = scale;
     };
 
-    const onTouchStart = (e: TouchEvent) => {
+    const onGestureChange = (e: Event) => {
       e.preventDefault();
-      moved = false;
-      if (e.touches.length === 2) {
-        pinching = true;
-        lastDist = Math.hypot(
-          e.touches[1].clientX - e.touches[0].clientX,
-          e.touches[1].clientY - e.touches[0].clientY
-        );
-      } else if (e.touches.length === 1) {
-        pinching = false;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
+      const ge = e as any;
+      scale = Math.min(8, Math.max(1, gestureStartScale * ge.scale));
+      applyTransform();
+    };
+
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      if (scale < 1) { scale = 1; tx = 0; ty = 0; applyTransform(); }
+    };
+
+    // ── Touch events for single-finger pan + tap-to-close ──────────────
+    const onTouchStart = (e: TouchEvent) => {
+      hasMoved = false;
+      if (e.touches.length === 1) {
+        panning = true;
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
+      } else {
+        panning = false;
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
-      moved = true;
-      if (e.touches.length === 2) {
-        pinching = true;
-        const dist = Math.hypot(
-          e.touches[1].clientX - e.touches[0].clientX,
-          e.touches[1].clientY - e.touches[0].clientY
-        );
-        if (lastDist > 0) {
-          scale = Math.min(8, Math.max(1, scale * (dist / lastDist)));
-        }
-        lastDist = dist;
-        clampPan();
+      hasMoved = true;
+      if (e.touches.length === 1 && panning && scale > 1) {
+        tx += e.touches[0].clientX - panStartX;
+        ty += e.touches[0].clientY - panStartY;
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
         applyTransform();
-      } else if (e.touches.length === 1) {
-        if (!pinching && scale > 1) {
-          tx += e.touches[0].clientX - startX;
-          ty += e.touches[0].clientY - startY;
-          clampPan();
-          applyTransform();
-        }
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
+      } else if (e.touches.length === 1 && panning) {
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
       }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      e.preventDefault();
-      if (e.touches.length < 2 && pinching) {
-        pinching = false;
-        lastDist = 0;
-        if (e.touches.length === 1) {
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-        }
-      }
-      if (e.touches.length === 0) {
+      panning = false;
+      if (e.touches.length === 0 && !hasMoved) {
         const now = Date.now();
-        if (!moved) {
-          if (now - lastTap < 300) {
-            // Double-tap: reset zoom
-            scale = 1; tx = 0; ty = 0;
-            applyTransform();
-          } else {
-            // Single tap: reset if zoomed, else close
-            if (scale > 1) {
-              scale = 1; tx = 0; ty = 0;
-              applyTransform();
-            } else {
-              onCloseRef.current();
-            }
-          }
+        if (now - lastTap < 300) {
+          scale = 1; tx = 0; ty = 0;
+          applyTransform();
+        } else if (scale <= 1) {
+          onCloseRef.current();
         }
         lastTap = now;
-        moved = false;
-        pinching = false;
       }
+      hasMoved = false;
     };
 
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart, { passive: false });
+    el.addEventListener('gesturechange', onGestureChange, { passive: false });
+    el.addEventListener('gestureend', onGestureEnd, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: false });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
 
     return () => {
-      if (metaViewport) metaViewport.setAttribute('content', origViewport);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      el.removeEventListener('gestureend', onGestureEnd);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -386,7 +358,7 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
         ✕
       </button>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 pointer-events-none select-none">
-        Pinch to zoom · drag to pan · tap to close · v4
+        Pinch to zoom · drag to pan · tap to close · v5
       </div>
     </div>,
     document.body
