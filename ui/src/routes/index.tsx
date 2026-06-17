@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { vespera, API_BASE } from "@/lib/vespera";
 
@@ -233,89 +233,123 @@ function PhotoGrid({ photos }: { photos: PhotoItem[] }) {
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const state = useRef({ scale: 1, tx: 0, ty: 0, lastDist: 0, lastX: 0, lastY: 0, lastTap: 0, touching: false });
-
-  const apply = () => {
-    const img = imgRef.current;
-    if (!img) return;
-    const s = state.current;
-    img.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
-  };
-
-  const clamp = () => {
-    const img = imgRef.current;
-    if (!img) return;
-    const s = state.current;
-    const maxX = Math.max(0, (img.offsetWidth * s.scale - window.innerWidth) / 2);
-    const maxY = Math.max(0, (img.offsetHeight * s.scale - window.innerHeight) / 2);
-    s.tx = Math.min(maxX, Math.max(-maxX, s.tx));
-    s.ty = Math.min(maxY, Math.max(-maxY, s.ty));
-  };
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const s = state.current;
 
-    const onStart = (e: TouchEvent) => {
+    let scale = 1, tx = 0, ty = 0;
+    let lastDist = 0;
+    let startX = 0, startY = 0;
+    let moved = false;
+    let pinching = false;
+    let lastTap = 0;
+
+    const applyTransform = () => {
+      const img = imgRef.current;
+      if (!img) return;
+      img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    };
+
+    const clampPan = () => {
+      if (scale <= 1) { tx = 0; ty = 0; return; }
+      const img = imgRef.current;
+      if (!img) return;
+      const rect = img.getBoundingClientRect();
+      const maxX = Math.max(0, (rect.width * (scale - 1)) / (2 * scale));
+      const maxY = Math.max(0, (rect.height * (scale - 1)) / (2 * scale));
+      tx = Math.min(maxX, Math.max(-maxX, tx));
+      ty = Math.min(maxY, Math.max(-maxY, ty));
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
-      s.touching = true;
+      moved = false;
       if (e.touches.length === 2) {
-        const dx = e.touches[1].clientX - e.touches[0].clientX;
-        const dy = e.touches[1].clientY - e.touches[0].clientY;
-        s.lastDist = Math.hypot(dx, dy);
+        pinching = true;
+        lastDist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
       } else if (e.touches.length === 1) {
-        s.lastX = e.touches[0].clientX;
-        s.lastY = e.touches[0].clientY;
+        pinching = false;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
       }
     };
 
-    const onMove = (e: TouchEvent) => {
+    const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
+      moved = true;
       if (e.touches.length === 2) {
-        const dx = e.touches[1].clientX - e.touches[0].clientX;
-        const dy = e.touches[1].clientY - e.touches[0].clientY;
-        const dist = Math.hypot(dx, dy);
-        if (s.lastDist > 0) {
-          s.scale = Math.min(8, Math.max(1, s.scale * (dist / s.lastDist)));
+        pinching = true;
+        const dist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY
+        );
+        if (lastDist > 0) {
+          scale = Math.min(8, Math.max(1, scale * (dist / lastDist)));
         }
-        s.lastDist = dist;
-        clamp();
-        apply();
-      } else if (e.touches.length === 1 && s.scale > 1) {
-        s.tx += e.touches[0].clientX - s.lastX;
-        s.ty += e.touches[0].clientY - s.lastY;
-        s.lastX = e.touches[0].clientX;
-        s.lastY = e.touches[0].clientY;
-        clamp();
-        apply();
+        lastDist = dist;
+        clampPan();
+        applyTransform();
+      } else if (e.touches.length === 1) {
+        if (!pinching && scale > 1) {
+          tx += e.touches[0].clientX - startX;
+          ty += e.touches[0].clientY - startY;
+          clampPan();
+          applyTransform();
+        }
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
       }
     };
 
-    const onEnd = (e: TouchEvent) => {
+    const onTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
-      if (e.touches.length === 0) {
-        s.touching = false;
-        // Double-tap to reset
-        if (e.changedTouches.length === 1) {
-          const now = Date.now();
-          if (now - s.lastTap < 300) {
-            s.scale = 1; s.tx = 0; s.ty = 0;
-            apply();
-          }
-          s.lastTap = now;
+      if (e.touches.length < 2 && pinching) {
+        pinching = false;
+        lastDist = 0;
+        if (e.touches.length === 1) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
         }
       }
-      if (e.touches.length < 2) s.lastDist = 0;
+      if (e.touches.length === 0) {
+        const now = Date.now();
+        if (!moved) {
+          if (now - lastTap < 300) {
+            // Double-tap: reset zoom
+            scale = 1; tx = 0; ty = 0;
+            applyTransform();
+          } else {
+            // Single tap: reset if zoomed, else close
+            if (scale > 1) {
+              scale = 1; tx = 0; ty = 0;
+              applyTransform();
+            } else {
+              onCloseRef.current();
+            }
+          }
+        }
+        lastTap = now;
+        moved = false;
+        pinching = false;
+      }
     };
 
-    el.addEventListener("touchstart", onStart, { passive: false });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
     return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
     };
   }, []);
 
@@ -324,29 +358,24 @@ function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
       ref={containerRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
       style={{ touchAction: "none" }}
-      onClick={(e) => {
-        if (e.target === containerRef.current) {
-          const s = state.current;
-          if (s.scale > 1) { s.scale = 1; s.tx = 0; s.ty = 0; apply(); }
-          else onClose();
-        }
-      }}
     >
       <img
         ref={imgRef}
         src={src}
         alt="photo"
         className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl select-none"
-        style={{ transformOrigin: "center center", willChange: "transform", touchAction: "none" }}
+        style={{ transformOrigin: "center", willChange: "transform", pointerEvents: "none" }}
         draggable={false}
       />
       <button
-        className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-sm text-white hover:bg-black/80"
+        className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-1 text-sm text-white hover:bg-black/80 z-10"
+        style={{ touchAction: "manipulation" }}
+        onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
         onClick={(e) => { e.stopPropagation(); onClose(); }}
       >
         ✕
       </button>
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white/70 pointer-events-none select-none">
         Pinch to zoom · drag to pan · tap to close
       </div>
     </div>
