@@ -487,37 +487,32 @@ async function deleteNote(btn,id){
 // ══════════════════════════════════════════════════════════
 //  API KEYS
 // ══════════════════════════════════════════════════════════
-const COMPONENTS=[
-  {name:'Cloud AI',desc:'Routes complex prompts to a hosted LLM (Claude, Groq, etc.)'},
-  {name:'Background Loop',desc:'Idle-time worker that consolidates memories.'},
-  {name:'Cleanup Crew',desc:'Removes duplicates and low-trust memories.'},
-  {name:'Periodic Pruning',desc:'Evicts stale memories below trust thresholds.'},
-  {name:'Handoff',desc:'Transfers context between local and cloud models.'},
-  {name:'Web Search',desc:'Fetches live results when a question needs the web.'},
-  {name:'Telegram',desc:'Bridges Vespera with a Telegram bot.'},
-  {name:'TTS/Voice',desc:'Generates spoken audio replies.'},
-];
+function prettyName(k){return k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
 
 async function loadApiKeys(){
-  let liveComps=[];
-  try{const d=await apiJson('/api/components');liveComps=Array.isArray(d)?d:Object.values(d||{});}catch{}
-  const map={};liveComps.forEach(c=>map[c.name]=c);
   const el=document.getElementById('apikeys-list');
-  el.innerHTML=COMPONENTS.map(c=>{
-    const live=map[c.name]||{};
-    const hasKey=!!live.api_key;
-    return `<div class="comp-card">
-      <div class="comp-name">${esc(c.name)}</div>
-      <div class="comp-desc">${esc(c.desc)}</div>
-      <label><span>API Key</span>
-        <div class="row" style="gap:.4rem">
-          <input type="password" id="key-${esc(c.name)}" placeholder="${hasKey?'●●●●●●●● (set)':'not set'}" style="flex:1">
-          <button class="btn btn-ghost" onclick="toggleShow('key-${esc(c.name)}',this)" style="flex-shrink:0;padding:.4rem .6rem">👁</button>
-        </div>
-      </label>
-      <button class="btn" onclick="saveKey('${esc(c.name)}','key-${esc(c.name)}',this)">Save</button>
-    </div>`;
-  }).join('');
+  el.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
+  try{
+    const d=await apiJson('/api/components');
+    const comps=d.components||d;
+    const entries=Object.entries(comps);
+    if(!entries.length){el.innerHTML='<p class="muted">No components found.</p>';return;}
+    el.innerHTML=entries.map(([key,c])=>{
+      const hasKey=!!c.has_api_key;
+      const safeId='key_'+key.replace(/[^a-z0-9]/gi,'_');
+      return `<div class="comp-card">
+        <div class="comp-name">${esc(prettyName(key))}</div>
+        <div class="comp-desc">${esc(c.description||'')}</div>
+        <label><span>API Key</span>
+          <div class="row" style="gap:.4rem">
+            <input type="password" id="${safeId}" placeholder="${hasKey?'●●●●●●●● (set)':'not set'}" style="flex:1">
+            <button class="btn btn-ghost" onclick="toggleShow('${safeId}',this)" style="flex-shrink:0;padding:.4rem .6rem">👁</button>
+          </div>
+        </label>
+        <button class="btn" onclick="saveKey('${key}','${safeId}',this)">Save</button>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
 }
 
 function toggleShow(id,btn){
@@ -525,13 +520,14 @@ function toggleShow(id,btn){
   inp.type=inp.type==='password'?'text':'password';
 }
 
-async function saveKey(name,inputId,btn){
+async function saveKey(apiKey,inputId,btn){
   const val=document.getElementById(inputId).value.trim();
   if(!val){toast('Enter a key first',true);return;}
   btn.disabled=true;btn.textContent='Saving…';
   try{
-    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify({api_key:val})});
+    await api(`/api/components/${encodeURIComponent(apiKey)}`,{method:'POST',body:JSON.stringify({api_key:val})});
     document.getElementById(inputId).value='';
+    document.getElementById(inputId).placeholder='●●●●●●●● (set)';
     btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);
     toast('Saved');
   }catch(e){btn.textContent='Save';btn.disabled=false;toast(e.message||'Failed',true);}
@@ -546,7 +542,7 @@ async function loadModels(){
   el.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
   try{
     const d=await apiJson('/api/models');
-    _models=Array.isArray(d)?d:[];
+    _models=Array.isArray(d)?d:(d.models||[]);
     if(!_models.length){el.innerHTML='<p class="muted" style="font-size:.85rem">No Ollama models found. Is Ollama running?</p>';return;}
     el.innerHTML=`<div style="display:flex;flex-direction:column;gap:.4rem">`+_models.map(m=>`
       <div class="model-card">
@@ -563,30 +559,35 @@ function fmtSize(s){
   const gb=s/1e9;return gb>=1?gb.toFixed(2)+' GB':(s/1e6).toFixed(0)+' MB';
 }
 
-function buildAssign(){
+async function buildAssign(){
   const wrap=document.getElementById('assign-section');
   const list=document.getElementById('assign-list');
-  const ASSIGNABLE=['Background Loop','Cleanup Crew','Periodic Pruning','Handoff'];
-  list.innerHTML=ASSIGNABLE.map(name=>`
-    <div class="comp-card">
-      <div class="comp-name">${esc(name)}</div>
+  let entries=[];
+  try{const d=await apiJson('/api/components');const comps=d.components||d;entries=Object.entries(comps);}catch{}
+  list.innerHTML=entries.map(([key,c])=>{
+    const safeId='assign_'+key.replace(/[^a-z0-9]/gi,'_');
+    const cur=c.model||'';
+    return `<div class="comp-card">
+      <div class="comp-name">${esc(prettyName(key))}</div>
+      ${cur?`<div class="comp-desc muted">Current: ${esc(cur)}</div>`:''}
       <label><span>Assign model</span>
-        <select id="assign-${esc(name)}">
+        <select id="${safeId}">
           <option value="">— unchanged —</option>
-          ${_models.map(m=>`<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')}
+          ${_models.map(m=>`<option value="${esc(m.name)}"${m.name===cur?' selected':''}>${esc(m.name)}</option>`).join('')}
         </select>
       </label>
-      <button class="btn" onclick="assignModel('${esc(name)}',this)">Assign</button>
-    </div>`).join('');
+      <button class="btn" onclick="assignModel('${key}','${safeId}',this)">Assign</button>
+    </div>`;
+  }).join('');
   wrap.style.display='block';
 }
 
-async function assignModel(name,btn){
-  const val=document.getElementById('assign-'+name).value;
+async function assignModel(key,selectId,btn){
+  const val=document.getElementById(selectId).value;
   if(!val)return;
   btn.disabled=true;btn.textContent='Saving…';
   try{
-    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify({model:val})});
+    await api(`/api/components/${encodeURIComponent(key)}`,{method:'POST',body:JSON.stringify({model:val})});
     btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Assign';btn.disabled=false;},2000);
     toast('Model assigned');
   }catch(e){btn.textContent='Assign';btn.disabled=false;toast(e.message||'Failed',true);}
@@ -602,15 +603,18 @@ async function loadSettings(){
   compsEl.innerHTML='<p class="muted" style="font-size:.85rem">Loading…</p>';
   try{
     const d=await apiJson('/api/components');
-    const comps=Array.isArray(d)?d:Object.values(d||{});
-    compsEl.innerHTML=comps.map(c=>`
-      <div class="comp-card">
-        <div class="comp-name">${esc(c.name)}</div>
+    const comps=d.components||d;
+    const entries=Object.entries(comps);
+    compsEl.innerHTML=entries.map(([key,c])=>{
+      const safeId=key.replace(/[^a-z0-9]/gi,'_');
+      return `<div class="comp-card">
+        <div class="comp-name">${esc(prettyName(key))}</div>
         ${c.description?`<div class="comp-desc">${esc(c.description)}</div>`:''}
-        <label><span>Model</span><input id="sm-${esc(c.name)}" value="${esc(c.model||'')}"></label>
-        <label><span>API Key</span><input type="password" id="sk-${esc(c.name)}" placeholder="${c.api_key?'●●●●●●●● (set)':'not set'}"></label>
-        <button class="btn" onclick="saveComp('${esc(c.name)}',this)">Save</button>
-      </div>`).join('');
+        <label><span>Model</span><input id="sm_${safeId}" value="${esc(c.model||'')}"></label>
+        <label><span>API Key</span><input type="password" id="sk_${safeId}" placeholder="${c.has_api_key?'●●●●●●●● (set)':'not set'}"></label>
+        <button class="btn" onclick="saveComp('${key}','${safeId}',this)">Save</button>
+      </div>`;
+    }).join('');
   }catch(e){compsEl.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
 
   // System settings
@@ -636,13 +640,14 @@ async function loadSettings(){
   }catch{}
 }
 
-async function saveComp(name,btn){
+async function saveComp(key,safeId,btn){
   btn.disabled=true;btn.textContent='Saving…';
   try{
-    const body={model:document.getElementById('sm-'+name).value};
-    const keyInp=document.getElementById('sk-'+name);
+    const body={model:document.getElementById('sm_'+safeId).value};
+    const keyInp=document.getElementById('sk_'+safeId);
     if(keyInp.value)body.api_key=keyInp.value;
-    await api(`/api/components/${encodeURIComponent(name)}`,{method:'POST',body:JSON.stringify(body)});
+    await api(`/api/components/${encodeURIComponent(key)}`,{method:'POST',body:JSON.stringify(body)});
+    if(keyInp.value)keyInp.placeholder='●●●●●●●● (set)';
     keyInp.value='';
     btn.textContent='Saved ✓';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;},2000);
     toast('Saved');
