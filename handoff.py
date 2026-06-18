@@ -473,6 +473,11 @@ def _get_reengagement_suffix() -> tuple[str, str | None]:
         return "", None
 
 
+_HAS_QUESTIONS_CHECK = re.compile(
+    r"\b(do you have (any )?questions?|any questions? for me|questions? (you have|you.?ve got)|want to ask me|anything you.?re curious|been wondering|follow.?up|followup)\b",
+    re.IGNORECASE,
+)
+
 _REMINDER_PRE_CHECK = re.compile(
     r"\b(remind|reminder|set a reminder|set reminder|alert me|notify me)\b",
     re.IGNORECASE,
@@ -546,6 +551,33 @@ _UNIFIED_SEARCH_CHECK = re.compile(
     r"|(?:can\s+you\s+|please\s+)?\bshow\s+me\s+(.+)",
     re.IGNORECASE,
 )
+
+
+def _handle_has_questions(message: str) -> dict | None:
+    """If user asks whether we have questions for them, surface the followup queue directly."""
+    if not _HAS_QUESTIONS_CHECK.search(message):
+        return None
+    try:
+        followups = get_followups(limit=5)
+    except Exception:
+        return None
+    if not followups:
+        return {"response": "Nothing specific right now — I haven't built up any questions yet. Ask me something and I'll start forming them.",
+                "handled_by": "local", "complexity": 0.0}
+    # Surface up to 3, mark them used
+    questions = []
+    for f in followups[:3]:
+        questions.append(f["content"])
+        try:
+            mark_followup_used(f["id"])
+        except Exception:
+            pass
+    if len(questions) == 1:
+        response = f"Actually yes — {questions[0]}"
+    else:
+        numbered = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
+        response = f"Yeah, a few things:\n{numbered}"
+    return {"response": response, "handled_by": "local", "complexity": 0.0}
 
 
 def _handle_reminder_locally(message: str) -> dict | None:
@@ -830,6 +862,11 @@ def _handle_unified_search(message: str) -> dict | None:
 
 def _route_message(message: str, memories: str, recent: str) -> dict:
     """Core routing logic — returns a result dict without re-engagement suffix."""
+
+    # "Do you have questions for me?" — surface followup queue directly
+    questions_result = _handle_has_questions(message)
+    if questions_result is not None:
+        return questions_result
 
     # Note requests — handle locally before complexity scoring
     note_result = _handle_note_locally(message)

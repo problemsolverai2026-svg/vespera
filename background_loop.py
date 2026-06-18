@@ -18,7 +18,7 @@ from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
 
 CPU_THROTTLE_PERCENT = float(os.getenv("VESPERA_CPU_LIMIT", "80"))
 from web_search import search as _web_search
-from memory.store import init_db, add_memory, get_memories, get_recent_conversations
+from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_followups
 from utils import get_logger, _sanitize
 
 log = get_logger("background_loop")
@@ -139,11 +139,44 @@ def think() -> dict | None:
 _shutdown = threading.Event()
 
 
+_MAX_PENDING_FOLLOWUPS = 5   # don't pile up more than this many unused questions
+_FOLLOWUP_TOPIC_WORDS   = 6  # top N words to compare for topic overlap
+
+
+def _followup_is_duplicate(new_content: str) -> bool:
+    """Return True if an existing unused followup covers the same topic."""
+    existing = get_followups(limit=20)
+    if len(existing) >= _MAX_PENDING_FOLLOWUPS:
+        log.debug("Followup skipped — already %d pending", len(existing))
+        return True
+    # Simple keyword overlap check: extract significant words and compare
+    stopwords = {"the","a","an","is","are","was","were","you","your","do","did",
+                 "have","has","had","it","its","that","this","to","of","in","or",
+                 "and","any","some","how","what","when","where","with","for","on",
+                 "be","been","by","from","as","at","up","if","so","but","not","no"}
+    def keywords(text):
+        words = re.findall(r"[a-z0-9]+", text.lower())
+        return set(w for w in words if w not in stopwords and len(w) > 2)
+    new_kw = keywords(new_content)
+    if not new_kw:
+        return False
+    for ex in existing:
+        ex_kw = keywords(ex.get("content", ""))
+        overlap = len(new_kw & ex_kw)
+        if overlap >= 3:  # 3+ shared keywords = same topic
+            log.debug("Followup skipped — topic overlap (%d words) with existing %s",
+                      overlap, ex["id"][:8])
+            return True
+    return False
+
+
 def _store_result(result: dict) -> None:
     """Thoughts → recent (cleanup pipeline). Follow-ups → validated directly."""
     kind    = result["type"]
     content = result["content"]
     if kind == "followup":
+        if _followup_is_duplicate(content):
+            return
         mem_id = add_memory(content=content, layer="validated", source="followup", trust_score=0.65)
         log.info("Follow-up stored (%s): %s", mem_id[:8], content[:80])
     else:
