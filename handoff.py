@@ -78,7 +78,14 @@ Recent conversation history (read this carefully before answering):
 
 User message: {message}
 
-Answer using the conversation history above when relevant. If the answer is clearly in the history, use it. Only add [HANDOFF] at the very end if the question requires real-time data, advanced coding, or deep technical reasoning you genuinely cannot answer. Simple questions and greetings should NEVER use [HANDOFF]."""
+Answer using the conversation history above when relevant. If the answer is clearly in the history, use it.
+
+[HANDOFF] RULES — read carefully:
+- NEVER use [HANDOFF] for casual chat, acknowledgments, or simple conversational replies.
+- NEVER use [HANDOFF] for messages about future plans, intentions, or general statements.
+- ONLY use [HANDOFF] if the question requires: live/real-time data, advanced multi-step math, or complex code generation you truly cannot do.
+- When in doubt, answer locally. A simple answer is better than a handoff.
+- Do NOT add [HANDOFF] just because a topic sounds technical — answer it yourself."""
 
 CLOUD_CONTEXT_PROMPT = """You are a helpful AI assistant. Answer the user's message directly and helpfully.
 
@@ -474,7 +481,7 @@ def _get_reengagement_suffix() -> tuple[str, str | None]:
 
 
 _HAS_QUESTIONS_CHECK = re.compile(
-    r"\b(do you have (any )?questions?|any questions? for me|questions? (you have|you.?ve got)|want to ask me|anything you.?re curious|been wondering|follow.?up|followup)\b",
+    r"\b(do you have (any )?questions?|any (other |more )?questions?|questions? (you have|you.?ve got|you came up with|built up)|want to ask me|anything you.?re curious|been wondering|follow.?up|followup)\b",
     re.IGNORECASE,
 )
 
@@ -494,10 +501,10 @@ _CANCEL_REMINDER_CHECK = re.compile(
 # Note-taking patterns
 # Matches the trigger phrase anywhere in the message; group(1) = everything after it
 _NOTE_SAVE_CHECK = re.compile(
-    r"(?i)^(?!(?:show|list|find|search|get|what|my|read|retrieve|look)\b)(?:.*?\b)?(?:"
-    r"note(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note"
+    r"(?i)^(?!(?:show|list|find|search|get|what|my|read|retrieve|look)\b)(?:.{0,30}?\b)?(?:"
+    r"note\b(?:\s+to\s+self)?|jot(?:\s+down)?|save(?:\s+a)?\s+note|quick\s+note"
     r"|take(?:\s+a)?\s+note|make(?:\s+a)?\s+note(?:\s+of\s+this)?"
-    r"|remember(?:\s+that|\s+to)?"
+    r"|remember(?:\s+that|\s+to)\s"
     r"|i\s+need\s+(?:you\s+to\s+)?(?:make|take|save|write|note)(?:\s+a)?\s*(?:note(?:\s+of\s+this)?|this\s+down|this)?"
     r"|can\s+you\s+(?:take|make|save|note|write(?:\s+down)?|jot(?:\s+down)?)"
     r"|please\s+(?:note|save|remember|write(?:\s+down)?|jot(?:\s+down)?)"
@@ -505,7 +512,7 @@ _NOTE_SAVE_CHECK = re.compile(
     r")\s*[:\-]?\s*"
 )
 _NOTE_LIST_CHECK = re.compile(
-    r"\b(?:show|list|what(?:'s| are| were)?|my|get|read)\s+(?:my\s+)?notes?\b",
+    r"\b(?:show|list|what(?:'s| are| were)?|get|read)\s+(?:my\s+)?notes?\b",
     re.IGNORECASE,
 )
 _NOTE_DELETE_CHECK = re.compile(
@@ -553,31 +560,53 @@ _UNIFIED_SEARCH_CHECK = re.compile(
 )
 
 
+_STOP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of",
+    "with", "is", "it", "i", "you", "we", "he", "she", "they", "do", "did",
+    "have", "has", "had", "be", "been", "was", "were", "are", "that", "this",
+    "not", "no", "so", "if", "my", "your", "me", "up", "any", "out", "as",
+    "by", "from", "about", "what", "how", "when", "there", "just", "more",
+    "also", "can", "will", "would", "could", "should", "get", "its",
+}
+
+
+def _score_followup(followup_text: str, context_words: set) -> int:
+    """Return count of meaningful words shared between followup and recent context."""
+    words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', followup_text) if len(w) > 2}
+    words -= _STOP_WORDS
+    return len(words & context_words)
+
+
 def _handle_has_questions(message: str) -> dict | None:
     """If user asks whether we have questions for them, surface the followup queue directly."""
     if not _HAS_QUESTIONS_CHECK.search(message):
         return None
     try:
-        followups = get_followups(limit=5)
+        followups = get_followups(limit=10)
     except Exception:
         return None
     if not followups:
         return {"response": "Nothing specific right now — I haven't built up any questions yet. Ask me something and I'll start forming them.",
                 "handled_by": "local", "complexity": 0.0}
-    # Surface up to 3, mark them used
-    questions = []
-    for f in followups[:3]:
-        questions.append(f["content"])
-        try:
-            mark_followup_used(f["id"])
-        except Exception:
-            pass
-    if len(questions) == 1:
-        response = f"Actually yes — {questions[0]}"
-    else:
-        numbered = "\n".join(f"{i+1}. {q}" for i, q in enumerate(questions))
-        response = f"Yeah, a few things:\n{numbered}"
-    return {"response": response, "handled_by": "local", "complexity": 0.0}
+
+    # Pick the question most relevant to recent conversation so topics flow naturally.
+    # Simple keyword-overlap score — no model call needed.
+    try:
+        recent_convs = get_recent_conversations(limit=6)
+        context_text = " ".join(c["content"] for c in recent_convs)
+        context_words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', context_text) if len(w) > 2}
+        context_words -= _STOP_WORDS
+        best = max(followups, key=lambda f: _score_followup(f["content"], context_words))
+    except Exception:
+        best = followups[0]  # fallback: most recent
+
+    # Surface one question at a time — keeps replies short and conversation natural.
+    # Multi-question dumps cause long user answers that confuse the local model.
+    try:
+        mark_followup_used(best["id"])
+    except Exception:
+        pass
+    return {"response": best["content"], "handled_by": "local", "complexity": 0.0}
 
 
 def _handle_reminder_locally(message: str) -> dict | None:
@@ -623,8 +652,13 @@ def _handle_note_locally(message: str) -> dict | None:
     from notes import add_note, list_notes, delete_note, init_notes_db
     init_notes_db()
 
+    # Long conversational messages (>300 chars) are almost never note commands.
+    # Skip list/save detection to avoid false positives from mid-sentence mentions
+    # like "most of my notes that I've been recording".
+    _is_long_message = len(message) > 300
+
     # List notes — checked FIRST to avoid "show my notes" matching the save regex
-    if _NOTE_LIST_CHECK.search(message):
+    if not _is_long_message and _NOTE_LIST_CHECK.search(message):
         notes = list_notes()
         if not notes:
             return {"response": "No notes saved yet. Say 'note: something' to add one.", "handled_by": "local-note", "complexity": 0.0}
@@ -643,7 +677,7 @@ def _handle_note_locally(message: str) -> dict | None:
 
     # Delete a note
     # Save a note
-    m = _NOTE_SAVE_CHECK.match(message)
+    m = None if _is_long_message else _NOTE_SAVE_CHECK.match(message)
     if m:
         note_content = message[m.end():].strip()
         if not note_content:
@@ -652,7 +686,7 @@ def _handle_note_locally(message: str) -> dict | None:
         short_id = note["id"][:8]
         return {"response": f"\U0001f4dd Noted: {note_content} (id: {short_id})", "handled_by": "local-note", "complexity": 0.0}
 
-    if _NOTE_DELETE_CHECK.search(message):
+    if not _is_long_message and _NOTE_DELETE_CHECK.search(message):
         match = re.search(r'[0-9a-f-]{4,}', message, re.IGNORECASE)
         if match:
             ok = delete_note(match.group(0))
@@ -931,7 +965,9 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
         return {"response": _trim(response), "handled_by": "local", "complexity": complexity}
 
     response, needs_handoff = respond_locally(message, memories, recent)
-    if needs_handoff:
+    # Ignore self-handoff for low-complexity messages — local model is too
+    # aggressive about ejecting casual chat to cloud.
+    if needs_handoff and complexity >= 0.35:
         response = respond_cloud(message, memories, recent)
         return {"response": _trim(response), "handled_by": "cloud", "complexity": complexity}
     if not response:

@@ -5,6 +5,7 @@ First-pass memory reviewer. Runs every 5 minutes.
 Reviews 'recent' memories — promotes good ones to 'validated', prunes garbage.
 """
 
+import re
 import time
 import threading
 from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
@@ -37,6 +38,65 @@ Respond in JSON only:
   "decision": "keep" or "delete",
   "reason": "one short sentence"
 }}"""
+
+
+# ─────────────────────────────────────────────
+# DEDUPLICATION
+# ─────────────────────────────────────────────
+
+_STOP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of",
+    "with", "is", "it", "i", "you", "we", "he", "she", "they", "do", "did",
+    "have", "has", "had", "be", "been", "was", "were", "are", "that", "this",
+    "not", "no", "so", "if", "my", "your", "me", "up", "any", "out", "as",
+    "by", "from", "about", "what", "how", "when", "there", "just", "more",
+    "also", "can", "will", "would", "could", "should", "get", "its", "than",
+    "its", "user", "alfred", "thought", "recent", "note", "seem", "seems",
+}
+_DEDUP_THRESHOLD = 0.65  # word-overlap ratio above which a memory is a duplicate
+
+
+def _keywords(text: str) -> set:
+    words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', text) if len(w) > 2}
+    return words - _STOP_WORDS
+
+
+def _overlap_ratio(a: set, b: set) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
+def _is_duplicate(content: str) -> bool:
+    """Return True if a near-identical memory already exists in validated."""
+    import sqlite3
+    from pathlib import Path
+    kws = _keywords(content)
+    if len(kws) < 3:
+        return False  # too short to reliably dedup
+    # Pull validated candidates that share at least one keyword
+    top_kws = sorted(kws, key=len, reverse=True)[:5]  # use top 5 longest keywords
+    db_path = Path(__file__).parent / "memory" / "vespera.db"
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        clauses = " OR ".join(["LOWER(content) LIKE ?" for _ in top_kws])
+        params = [f"%{kw}%" for kw in top_kws]
+        rows = conn.execute(
+            f"SELECT content FROM memories WHERE layer='validated' AND pruned=0 AND ({clauses}) LIMIT 30",
+            params
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return False
+    incoming = _keywords(content)
+    for row in rows:
+        existing = _keywords(row["content"])
+        if _overlap_ratio(incoming, existing) >= _DEDUP_THRESHOLD:
+            return True
+    return False
 
 
 def call_local(prompt: str) -> str | None:
@@ -77,13 +137,19 @@ def run_cleanup():
             log.info("PRUNED  %s — %s", short_id, reason)
             pruned += 1
         else:
-            # Use 0.5 as a floor only — never downgrade a memory that already has a
-            # higher trust score (e.g. one manually set to 0.8 by periodic_pruning).
-            existing_score = memory.get("trust_score") or 0.0
-            new_score = max(0.5, existing_score)
-            promote_memory(memory["id"], new_trust_score=new_score)
-            log.info("KEPT    %s → validated (trust=%.2f) | %s...", short_id, new_score, memory["content"][:60])
-            kept += 1
+            # Dedup check: don't promote if a near-identical memory already exists in validated.
+            if _is_duplicate(memory["content"]):
+                prune_memory(memory["id"], reason="duplicate of existing validated memory", pruned_by="cleanup_crew")
+                log.info("DEDUP   %s — near-identical already in validated | %s...", short_id, memory["content"][:60])
+                pruned += 1
+            else:
+                # Use 0.5 as a floor only — never downgrade a memory that already has a
+                # higher trust score (e.g. one manually set to 0.8 by periodic_pruning).
+                existing_score = memory.get("trust_score") or 0.0
+                new_score = max(0.5, existing_score)
+                promote_memory(memory["id"], new_trust_score=new_score)
+                log.info("KEPT    %s → validated (trust=%.2f) | %s...", short_id, new_score, memory["content"][:60])
+                kept += 1
     log.info("Done — kept: %d, pruned: %d", kept, pruned)
 
 
@@ -102,10 +168,57 @@ def run_loop(shutdown_event: threading.Event = None):
     log.info("Stopped.")
 
 
+def run_dedup_validated(dry_run: bool = False) -> tuple[int, int]:
+    """One-shot retroactive dedup pass over all validated memories.
+    Scans in creation order; prunes a memory if a near-identical one already
+    appeared earlier in the scan (i.e. was created earlier and is the 'original').
+    Returns (kept, pruned) counts.
+    """
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(__file__).parent / "memory" / "vespera.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
+    rows = conn.execute(
+        "SELECT id, content FROM memories WHERE layer='validated' AND pruned=0 ORDER BY created_at ASC"
+    ).fetchall()
+    conn.close()
+
+    log.info("Dedup pass: %d validated memories to scan", len(rows))
+    seen: list[set] = []  # keyword sets of kept memories
+    kept = pruned = 0
+
+    for row in rows:
+        kws = _keywords(row["content"])
+        if len(kws) < 3:
+            kept += 1
+            seen.append(kws)
+            continue
+        duplicate = any(_overlap_ratio(kws, s) >= _DEDUP_THRESHOLD for s in seen)
+        if duplicate:
+            if not dry_run:
+                prune_memory(row["id"], reason="retroactive dedup", pruned_by="cleanup_crew")
+            log.info("DEDUP%s %s | %s...", " (dry)" if dry_run else "", row["id"][:8], row["content"][:80])
+            pruned += 1
+        else:
+            seen.append(kws)
+            kept += 1
+
+    log.info("Dedup pass done — kept: %d, pruned: %d%s", kept, pruned, " (dry run)" if dry_run else "")
+    return kept, pruned
+
+
 if __name__ == "__main__":
     import sys
     if "--once" in sys.argv:
         init_db()
         run_cleanup()
+    elif "--dedup" in sys.argv:
+        init_db()
+        dry = "--dry-run" in sys.argv
+        kept, pruned = run_dedup_validated(dry_run=dry)
+        print(f"Dedup complete — kept: {kept}, pruned: {pruned}{'  (dry run — nothing deleted)' if dry else ''}")
     else:
         run_loop()
