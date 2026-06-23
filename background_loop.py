@@ -112,7 +112,7 @@ def think() -> dict | None:
 
     all_notes = list_notes()
     notes_text = "\n".join(
-        f"- [{n['created_at'][:10]}] {_sanitize(n['content'], 200)}" for n in all_notes[:20]
+        f"- [{n['created_at'][:10]}] {_sanitize(n['content'], 200)}" for n in all_notes
     ) if all_notes else "No notes saved yet."
 
     raw = call_local(BACKGROUND_PROMPT.format(
