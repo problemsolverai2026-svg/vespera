@@ -54,13 +54,17 @@ function StatusBar() {
           />
           <span>{online ? "Connected" : "Offline"} · localhost:5055</span>
         </div>
-        <div className="flex items-center gap-4 font-mono text-muted-foreground">
-          {layers.map(([label, key]) => (
-              <span key={label}>
-              <span className="text-muted-foreground/70">{label}</span>{" "}
-              <span className="text-foreground">{(status?.memory?.[key] as number | undefined) ?? "—"}</span>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          {status ? (
+            <span>
+              <span className="text-foreground font-medium">
+                {(((status?.memory as Record<string,number>)?.validated ?? 0) + ((status?.memory as Record<string,number>)?.core ?? 0)).toLocaleString()}
+              </span>
+              <span className="text-muted-foreground/70"> memories</span>
             </span>
-          ))}
+          ) : (
+            <span className="text-muted-foreground/50">connecting…</span>
+          )}
         </div>
       </div>
     </footer>
@@ -74,7 +78,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <Link to="/" className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-lg leading-none text-primary" style={{fontFamily:'serif'}}>✦</span>
             <span className="font-mono text-sm tracking-tight">vespera</span>
           </Link>
           <nav className="flex items-center gap-1">

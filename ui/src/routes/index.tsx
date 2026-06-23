@@ -94,14 +94,13 @@ function ChatPage() {
       <div className="flex h-[calc(100vh-10rem)] flex-col gap-3">
         {/* Legend */}
         <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
-          <span className="font-medium">Key:</span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--local)]" />
-            <span>Local — free</span>
+            <span>Local</span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--cloud)]" />
-            <span>Cloud — costs money</span>
+            <span>Cloud</span>
           </span>
         </div>
 
@@ -118,16 +117,20 @@ function ChatPage() {
             </div>
           )}
           <div className="space-y-4">
-            {messages.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "flex justify-end" : ""}>
+            {messages.map((m, i) => {
+              const displayContent = m.role === "assistant"
+                ? m.content.replace(/^USER:[\s\S]*?ASSISTANT:\s*/i, "").trim()
+                : m.content;
+              return (
+              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[80%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                      : "max-w-[85%] space-y-2"
+                      ? "max-w-[80%] rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-base text-primary-foreground shadow-sm"
+                      : "max-w-[85%] space-y-2 rounded-2xl rounded-tl-sm bg-purple-900/50 px-4 py-3 text-base border border-purple-700/40 shadow-sm"
                   }
                 >
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
+                  <p className={`whitespace-pre-wrap text-base leading-loose ${m.role === 'assistant' ? 'text-amber-300' : ''}`}>{displayContent}</p>
                   {m.photos && m.photos.length > 0 && (
                     <PhotoGrid photos={m.photos} />
                   )}
@@ -155,7 +158,8 @@ function ChatPage() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {loading && (
               <p className="font-mono text-xs text-muted-foreground">thinking…</p>
             )}

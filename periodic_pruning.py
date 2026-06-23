@@ -46,6 +46,27 @@ Respond in JSON only:
   "reason": "one short sentence"
 }}"""
 
+CONTRADICTION_PROMPT = """You are a memory consistency checker for a persistent AI memory system.
+
+New memory being considered for core:
+{new_memory}
+
+Existing core memories:
+{core_memories}
+
+Does the new memory directly contradict any existing core memory?
+A contradiction means the two memories assert opposing facts (e.g. different names, opposite preferences, conflicting facts about the user).
+Do NOT flag a memory as contradicting just because it adds new information or is on the same topic.
+
+If there IS a contradiction, identify which core memory conflicts and what the conflict is.
+
+Respond in JSON only:
+{{
+  "contradicts": true or false,
+  "conflicting_core": "quote the conflicting core memory here, or null if none",
+  "reason": "one short sentence explaining the conflict, or null if none"
+}}"""
+
 
 def call_local(prompt: str) -> str | None:
     from utils import call_ollama
@@ -55,6 +76,26 @@ def call_local(prompt: str) -> str | None:
 def get_core_context() -> str:
     core = get_memories(layer="core", limit=10)
     return "\n".join([f"- {_sanitize(m['content'], 150)}" for m in core]) if core else "No core memories yet."
+
+
+def check_contradiction(content: str, core_context: str) -> tuple[bool, str | None, str | None]:
+    """Check if content contradicts any existing core memory.
+    Returns (contradicts, conflicting_core_text, reason)."""
+    raw = call_local(CONTRADICTION_PROMPT.format(
+        new_memory=_sanitize(content, 500),
+        core_memories=core_context,
+    ))
+    if not raw:
+        return False, None, None  # model unavailable — don't block promotion
+    result = parse_json_response(raw)
+    if not result:
+        return False, None, None
+    contradicts = result.get("contradicts", False)
+    if not isinstance(contradicts, bool):
+        contradicts = str(contradicts).lower() == "true"
+    conflicting = _sanitize(result.get("conflicting_core") or "", 200) or None
+    reason = _sanitize(result.get("reason") or "", 200) or None
+    return contradicts, conflicting, reason
 
 
 def review_memory(memory: dict, core_context: str) -> tuple[str, str]:
@@ -97,9 +138,22 @@ def _run_pruning_inner():
         if memory.get("source") == "followup" and decision in ("promote", "delete"):
             decision = "keep"
         if decision == "promote":
-            promote_memory(memory["id"], new_trust_score=0.95)
-            log.info("PROMOTED %s → core", memory["id"][:8])
-            promoted += 1
+            # Contradiction check before committing to core
+            contradicts, conflicting, contra_reason = check_contradiction(memory["content"], core_context)
+            if contradicts:
+                # Hold in validated — don't promote, don't delete, let human or future pass decide
+                touch_memory(memory["id"])
+                log.warning(
+                    "CONFLICT %s — contradicts core: %s | reason: %s",
+                    memory["id"][:8],
+                    (conflicting or "")[:80],
+                    contra_reason or "unknown",
+                )
+                kept += 1
+            else:
+                promote_memory(memory["id"], new_trust_score=0.95)
+                log.info("PROMOTED %s → core", memory["id"][:8])
+                promoted += 1
         elif decision == "delete":
             prune_memory(memory["id"], reason=reason, pruned_by="periodic_pruning")
             log.info("PRUNED   %s — %s", memory["id"][:8], reason)

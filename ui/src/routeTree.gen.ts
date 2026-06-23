@@ -11,11 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResourcesRouteImport } from './routes/resources'
+import { Route as PhoneSetupRouteImport } from './routes/phone-setup'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as ModelsRouteImport } from './routes/models'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
-import { Route as PhoneSetupRouteImport } from './routes/phone-setup'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -26,6 +26,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ResourcesRoute = ResourcesRouteImport.update({
   id: '/resources',
   path: '/resources',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PhoneSetupRoute = PhoneSetupRouteImport.update({
+  id: '/phone-setup',
+  path: '/phone-setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotesRoute = NotesRouteImport.update({
@@ -46,11 +51,6 @@ const MemoryRoute = MemoryRouteImport.update({
 const ApiKeysRoute = ApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PhoneSetupRoute = PhoneSetupRouteImport.update({
-  id: '/phone-setup',
-  path: '/phone-setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -150,6 +150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/phone-setup': {
+      id: '/phone-setup'
+      path: '/phone-setup'
+      fullPath: '/phone-setup'
+      preLoaderRoute: typeof PhoneSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/notes': {
       id: '/notes'
       path: '/notes'
@@ -176,13 +183,6 @@ declare module '@tanstack/react-router' {
       path: '/api-keys'
       fullPath: '/api-keys'
       preLoaderRoute: typeof ApiKeysRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/phone-setup': {
-      id: '/phone-setup'
-      path: '/phone-setup'
-      fullPath: '/phone-setup'
-      preLoaderRoute: typeof PhoneSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {

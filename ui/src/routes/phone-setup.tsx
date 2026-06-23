@@ -85,7 +85,7 @@ function PhoneSetupPage() {
               At the bottom of the screen, tap the button that looks like a box with an arrow
               pointing up out of it (⬆️).
             </Step>
-            <Step n={4} title="Tap "Add to Home Screen"">
+            <Step n={4} title='Tap "Add to Home Screen"'>
               Scroll down the list that appears and tap <strong>Add to Home Screen</strong>.
             </Step>
             <Step n={5} title="Tap Add">
@@ -110,7 +110,7 @@ function PhoneSetupPage() {
             <Step n={3} title="Tap the three-dot menu">
               In the top right corner of Chrome, tap the three vertical dots (⋮).
             </Step>
-            <Step n={4} title="Tap "Add to Home Screen"">
+            <Step n={4} title='Tap "Add to Home Screen"'>
               Find and tap <strong>Add to Home screen</strong> in the menu.
             </Step>
             <Step n={5} title="Tap Add">

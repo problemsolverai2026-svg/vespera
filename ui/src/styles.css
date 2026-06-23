@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -66,7 +67,9 @@
   html, body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-family: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
   }
 }

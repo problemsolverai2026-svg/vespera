@@ -559,6 +559,23 @@ _UNIFIED_SEARCH_CHECK = re.compile(
     re.IGNORECASE,
 )
 
+# Natural question patterns — "where did I eat", "do you remember where I parked", etc.
+_NATURAL_QUESTION_CHECK = re.compile(
+    r"\bwhere\s+(?:did\s+i|can\s+i|do\s+i|would\s+i|could\s+i|should\s+i)\s+(.+)"
+    r"|\bwhat\s+(?:did\s+i|do\s+i|was\s+(?:that|the))\s+(.+)"
+    r"|\bdo\s+you\s+(?:remember|know|recall|have)\s+(?:where|what|when|if|whether|anything\s+about)?\s*(.+)"
+    r"|\bdid\s+i\s+(?:ever\s+)?(?:mention|tell\s+you|say|note|save|write)\s+(?:anything\s+about\s+)?(.+)"
+    r"|\bwhere\s+(?:is|are|was|were)\s+(?:the\s+|a\s+|my\s+)?(.+)",
+    re.IGNORECASE,
+)
+
+_NATURAL_QUESTION_FILLER = re.compile(
+    r"^(?:where|what|when|how|did|i|can|get|do|would|could|should|you|remember"
+    r"|know|recall|the|a|an|is|are|was|were|eat|ate|had|find|locally|last|night"
+    r"|today|yesterday|around|here|there|ever|any|something|some)\s+",
+    re.IGNORECASE,
+)
+
 
 _STOP_WORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of",
@@ -825,6 +842,74 @@ def _handle_photo_search(message: str) -> dict | None:
     return {"response": f"\U0001f4f7 Photos matching '{query}':", "handled_by": "local-photo", "complexity": 0.0, "photos": photo_items}
 
 
+def _handle_natural_question(message: str) -> dict | None:
+    """Handle natural speech questions like 'where did I eat' or 'do you remember where I parked'."""
+    m = _NATURAL_QUESTION_CHECK.search(message)
+    if not m:
+        return None
+    # Extract the first non-None capture group
+    raw = next((g for g in m.groups() if g), None)
+    if not raw:
+        return None
+    # Strip filler words iteratively to get to the meaningful keyword(s)
+    query = raw.strip().rstrip('?').strip()
+    prev = None
+    while prev != query:
+        prev = query
+        query = re.sub(
+            r'^(?:where|what|when|how|did|i|can|get|do|would|could|should|you|remember'
+            r'|know|recall|the|a|an|is|are|was|were|eat|ate|had|find|locally|last|night'
+            r'|today|yesterday|around|here|there|ever|any|something|some)\s+',
+            '', query, flags=re.IGNORECASE
+        ).strip()
+    query = re.sub(r'\s+(?:please|thanks|thank\s+you|for\s+me|now|locally|around\s+here)$', '', query, flags=re.IGNORECASE).strip()
+    if not query or len(query) < 2:
+        return None
+    # Also search conversations for context
+    from notes import search_notes, init_notes_db
+    from photos import search_photos, init_photos_db
+    init_notes_db()
+    init_photos_db()
+    notes = search_notes(query, limit=10)
+    photos = search_photos(query, limit=5)
+    # Search recent conversations
+    conv_hits = []
+    try:
+        import sqlite3 as _sq
+        _db = os.path.join(os.path.dirname(__file__), 'memory', 'vespera.db')
+        with _sq.connect(_db) as _conn:
+            _conn.row_factory = _sq.Row
+            rows = _conn.execute(
+                "SELECT content, timestamp FROM conversations WHERE role='user' "
+                "AND content LIKE ? ORDER BY timestamp DESC LIMIT 5",
+                (f'%{query}%',)
+            ).fetchall()
+            conv_hits = [dict(r) for r in rows]
+    except Exception:
+        pass
+    if not notes and not photos and not conv_hits:
+        return {"response": f"I don't have anything saved about '{query}'.", "handled_by": "local-search", "complexity": 0.0}
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
+    parts = []
+    if notes:
+        note_lines = []
+        for i, n in enumerate(notes, 1):
+            try:
+                dt = datetime.fromisoformat(n["created_at"]).astimezone(tz)
+                date_str = dt.strftime("%b %d %I:%M %p")
+            except Exception:
+                date_str = ""
+            note_lines.append(f"  {i}. {n['content']}  ({date_str})")
+        parts.append("\U0001f4dd Notes:\n" + "\n".join(note_lines))
+    if conv_hits:
+        parts.append("\U0001f4ac You mentioned: " + " / ".join(r['content'][:100] for r in conv_hits))
+    if photos:
+        parts.append(f"\U0001f4f7 {len(photos)} photo(s) found")
+    return {"response": "\n".join(parts), "handled_by": "local-search", "complexity": 0.0}
+
+
 def _handle_unified_search(message: str) -> dict | None:
     """Search across notes AND photos for a keyword — returns combined results."""
     if not _UNIFIED_SEARCH_CHECK.search(message):
@@ -835,7 +920,18 @@ def _handle_unified_search(message: str) -> dict | None:
     # Strip leading connector words (e.g. "with", "about", "for", "on", "regarding")
     query = re.sub(r'^(?:with|about|for|on|regarding|concerning|involving|related\s+to|that\s+has\s+to\s+do\s+with)\s+', '', query, flags=re.IGNORECASE).strip()
     # Strip trailing filler words (e.g. "please", "thanks", "for me")
-    query = re.sub(r'\s+(?:please|thanks|thank\s+you|for\s+me|now)$', '', query, flags=re.IGNORECASE).strip()
+    query = re.sub(r'\s+(?:please|thanks|thank\s+you|for\s+me|now|locally|around\s+here|around\s+there)$', '', query, flags=re.IGNORECASE).strip()
+    # Strip leading question/filler words to get to the meaningful keyword
+    # e.g. "where I can get soup" → "soup"
+    prev = None
+    while prev != query:
+        prev = query
+        query = re.sub(
+            r'^(?:where|what|when|how|did|i|can|get|do|would|could|should|you|remember'
+            r'|know|recall|the|a|an|is|are|was|were|eat|ate|had|find|locally|last|night'
+            r'|today|yesterday|around|here|there|ever|any|something|some)\s+',
+            '', query, flags=re.IGNORECASE
+        ).strip()
     # Voice Control sometimes transcribes instrument letter 'I' as 'a' (e.g. 'a 069' -> 'I069')
     # If query looks like 'a NNN', also try 'INNN'
     query = re.sub(r'^a\s+(\d)', r'I\1', query)
@@ -916,6 +1012,11 @@ def _route_message(message: str, memories: str, recent: str) -> dict:
     video_result = _handle_video_locally(message)
     if video_result is not None:
         return video_result
+
+    # Natural question handler — "where did I eat", "do you remember where..."
+    natural_result = _handle_natural_question(message)
+    if natural_result is not None:
+        return natural_result
 
     # Unified cross-type search (notes + photos + videos)
     unified_result = _handle_unified_search(message)
