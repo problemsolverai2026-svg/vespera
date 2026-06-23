@@ -31,7 +31,7 @@ RUN_INTERVAL = BACKGROUND_LOOP_INTERVAL
 # Random sample size per run — every memory gets attention over time,
 # prompt stays well within the local model's context window.
 _MEMORY_SAMPLE_SIZE = 40
-_MEMORY_ENTRY_CHARS = 150
+_MEMORY_ENTRY_CHARS = 200
 
 BACKGROUND_PROMPT = """You are a persistent AI that thinks quietly between conversations with a user. Your job is to process what happened and either form a genuine thought or prepare a follow-up question for next time.
 
@@ -69,26 +69,41 @@ def call_local(prompt: str) -> str | None:
 
 def _sample_memories() -> str:
     """
-    Randomly sample from core + validated memories (excluding follow-ups).
-    Random sampling means every memory gets attention over time regardless of age,
-    while keeping the prompt within the local model's context window.
+    Always include all core memories, then fill remaining slots with a random
+    sample of validated memories (excluding follow-ups and satisfaction reactions).
+    Core memories are the highest-quality facts — they should always be visible.
     """
-    core      = get_memories(layer="core",      limit=500, order_by="created_at DESC")
-    validated = [m for m in get_memories(layer="validated", limit=500, order_by="created_at DESC")
-                 if m.get("source") != "followup"]
-    all_mems  = core + validated
-    if not all_mems:
+    _SATISFACTION_WORDS = {"pleased", "satisfied", "happy", "appreciated", "liked", "enjoyed",
+                           "glad", "relief", "excited", "loved", "grateful", "impressed"}
+
+    core = get_memories(layer="core", limit=500, order_by="created_at DESC")
+    all_validated = get_memories(layer="validated", limit=500, order_by="created_at DESC")
+
+    def _is_noise(m: dict) -> bool:
+        text = (m.get("content") or "").lower()
+        if m.get("source") == "followup":
+            return True
+        if any(w in text for w in _SATISFACTION_WORDS):
+            return True
+        return False
+
+    validated = [m for m in all_validated if not _is_noise(m)]
+
+    remaining = max(0, _MEMORY_SAMPLE_SIZE - len(core))
+    val_sample = random.sample(validated, min(remaining, len(validated)))
+    sample = core + val_sample
+
+    if not sample:
         return "No memories yet."
-    sample = random.sample(all_mems, min(_MEMORY_SAMPLE_SIZE, len(all_mems)))
     return "\n".join(f"- {_sanitize(m['content'], _MEMORY_ENTRY_CHARS)}" for m in sample)
 
 
 def think() -> dict | None:
     """Returns dict with 'type' ('thought' or 'followup') and 'content', or None."""
     memories     = _sample_memories()
-    convs        = get_recent_conversations(limit=2)
+    convs        = get_recent_conversations(limit=12)
     conversation = "\n".join(
-        f"{c['role'].upper()}: {_sanitize(c['content'], 150)}" for c in reversed(convs)
+        f"{c['role'].upper()}: {_sanitize(c['content'], 300)}" for c in reversed(convs)
     ) if convs else "No recent conversation."
 
     raw = call_local(BACKGROUND_PROMPT.format(
