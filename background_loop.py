@@ -19,6 +19,7 @@ from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
 CPU_THROTTLE_PERCENT = float(os.getenv("VESPERA_CPU_LIMIT", "80"))
 from web_search import search as _web_search
 from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_followups
+from notes import list_notes, init_notes_db
 from utils import get_logger, _sanitize
 
 log = get_logger("background_loop")
@@ -37,6 +38,9 @@ BACKGROUND_PROMPT = """You are a persistent AI that thinks quietly between conve
 
 Recent conversation:
 {conversation}
+
+User's saved notes:
+{notes}
 
 A sample of your existing memories (do not repeat these):
 {memories}
@@ -106,8 +110,14 @@ def think() -> dict | None:
         f"{c['role'].upper()}: {_sanitize(c['content'], 300)}" for c in reversed(convs)
     ) if convs else "No recent conversation."
 
+    all_notes = list_notes()
+    notes_text = "\n".join(
+        f"- [{n['created_at'][:10]}] {_sanitize(n['content'], 200)}" for n in all_notes[:20]
+    ) if all_notes else "No notes saved yet."
+
     raw = call_local(BACKGROUND_PROMPT.format(
         conversation=conversation,
+        notes=notes_text,
         memories=memories,
         max_length=MAX_THOUGHT_LENGTH,
     ))
