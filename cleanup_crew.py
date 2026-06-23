@@ -24,14 +24,20 @@ CLEANUP_PROMPT = """You are reviewing a memory for a persistent AI memory system
 Memory:
 {content}
 
-DELETE if: clearly incoherent, pure nonsense, empty, or a direct duplicate of another memory.
+DELETE if any of the following are true:
+- Clearly incoherent, pure nonsense, or empty
+- A direct duplicate of another memory
+- Records the user's reaction, satisfaction, or emotion about a response (e.g. "Alfred was pleased", "the user seemed happy with", "Alfred appreciated", "Alfred liked the answer about")
+- Describes how the AI responded or performed (e.g. "the assistant explained", "Rook provided", "the AI suggested")
+- A general observation about the conversation rather than a fact about the user
+
 KEEP if: any of the following are true:
 - A personal fact about the user (name, preference, habit, goal, relationship, opinion, job, location)
 - A project, decision, or commitment the user mentioned
 - A useful reference, insight, or recurring topic
 - Anything the user would reasonably expect to be remembered
 
-When in doubt, KEEP. It is better to keep a borderline memory than to lose a real user fact.
+When in doubt about a user fact, KEEP. But always DELETE satisfaction reactions and AI performance notes — those are never worth storing.
 
 Respond in JSON only:
 {{
