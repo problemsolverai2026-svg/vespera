@@ -80,6 +80,12 @@ User message: {message}
 
 Answer using the conversation history above when relevant. If the answer is clearly in the history, use it.
 
+Tone rules:
+- If the user's message is a closing statement, acknowledgment, or wrap-up (e.g. "got it", "thanks", "no I'm good", "I appreciate it"), respond with a brief natural closing — do NOT ask a follow-up question.
+- Only ask a question if the conversation is clearly open and the user wants more engagement.
+- Never explain your own reasoning or decision-making process in your response.
+- Never mention handoffs, cloud models, or internal system decisions.
+
 [HANDOFF] RULES — read carefully:
 - NEVER use [HANDOFF] for casual chat, acknowledgments, or simple conversational replies.
 - NEVER use [HANDOFF] for messages about future plans, intentions, or general statements.
@@ -179,6 +185,16 @@ def score_complexity(message: str) -> tuple[float, str, bool]:
 # RESPONSE HANDLERS
 # ─────────────────────────────────────────────
 
+_LEAKED_HANDOFF_PHRASES = (
+    "is not applicable here",
+    "does not require real-time",
+    "can continue without handing off",
+    "no handoff needed",
+    "handoff is not",
+    "handing off to another",
+    "the conversation can continue",
+)
+
 def respond_locally(message: str, memories: str, recent: str) -> tuple[str, bool]:
     raw = call_local(LOCAL_RESPONSE_PROMPT.format(
         memories=memories, recent=recent, message=message
@@ -187,6 +203,11 @@ def respond_locally(message: str, memories: str, recent: str) -> tuple[str, bool
         return "", True
     if "[HANDOFF]" in raw:
         return raw.replace("[HANDOFF]", "").strip(), True
+    # Strip leaked handoff reasoning — model sometimes explains why it's NOT handing off
+    lower = raw.lower()
+    if any(phrase in lower for phrase in _LEAKED_HANDOFF_PHRASES):
+        log.debug("Stripped leaked handoff reasoning from local response.")
+        return "", True  # escalate to cloud rather than return garbage
     return raw, False
 
 
