@@ -83,6 +83,7 @@ Answer using the conversation history above when relevant. If the answer is clea
 Tone rules:
 - If the user's message is a closing statement, acknowledgment, or wrap-up (e.g. "got it", "thanks", "no I'm good", "I appreciate it"), respond with a brief natural closing — do NOT ask a follow-up question.
 - Only ask a question if the conversation is clearly open and the user wants more engagement.
+- NEVER ask generic catch-all questions like "Is there anything I can help you with?" or "Is there anything specific you need assistance with?" — these are lazy and feel robotic. If you ask something, make it specific and relevant to what was just discussed.
 - Never explain your own reasoning or decision-making process in your response.
 - Never mention handoffs, cloud models, or internal system decisions.
 
@@ -207,7 +208,7 @@ def respond_locally(message: str, memories: str, recent: str) -> tuple[str, bool
     lower = raw.lower()
     if any(phrase in lower for phrase in _LEAKED_HANDOFF_PHRASES):
         log.debug("Stripped leaked handoff reasoning from local response.")
-        return "", True  # escalate to cloud rather than return garbage
+        return "Got it.", False  # return a neutral local fallback, not cloud
     return raw, False
 
 
