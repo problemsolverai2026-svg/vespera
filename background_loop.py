@@ -308,20 +308,68 @@ def _store_result(result: dict) -> None:
         log.info("Thought saved    (%s): %s...", mem_id[:8], content[:80])
 
 
+_CORE_FOLLOWUP_EVERY = 10   # every N cycles, generate a follow-up from a core memory
+_STALE_CHECK_EVERY   = 50   # every N cycles, flag a potentially stale core memory
+
+
+def _core_driven_followup() -> dict | None:
+    """Pick a core memory that hasn't been engaged with recently and generate
+    a follow-up question that builds on it or checks if it's still current."""
+    core = get_memories(layer="core", limit=50, order_by="updated_at ASC")
+    if not core:
+        return None
+    # Pick the least-recently-touched one
+    candidate = core[0]
+    content = candidate.get("content", "")
+    prompt = f"""You are a thoughtful AI assistant reviewing a long-term memory about the user.
+
+Memory:
+{content[:600]}
+
+Generate ONE natural follow-up question that either:
+1. Checks if this information is still current (things change)
+2. Digs deeper into something mentioned
+3. Connects it to something the user might be working on now
+
+Prefix with FOLLOWUP: — keep it conversational, 1 sentence, specific to the memory content.
+If nothing genuine to ask, respond NOTHING_NEW."""
+    raw = call_local(prompt)
+    if not raw or "NOTHING_NEW" in raw:
+        return None
+    match = re.search(r'FOLLOWUP:\s*([^\n]+)', raw, re.IGNORECASE)
+    if match:
+        question = _sanitize(match.group(1).strip(), MAX_THOUGHT_LENGTH)
+        if question and not _followup_is_duplicate(question):
+            # Touch the core memory so it rotates to back of queue
+            from memory.store import touch_memory
+            touch_memory(candidate["id"])
+            return {"type": "followup", "content": question}
+    return None
+
+
 def run_loop(shutdown_event: threading.Event = None):
     evt = shutdown_event if shutdown_event is not None else _shutdown
     init_db()
     log.info("Started — model: %s — every %ss — CPU limit: %s%%",
              OLLAMA_MODEL, RUN_INTERVAL, CPU_THROTTLE_PERCENT)
+    cycle = 0
     while not evt.is_set():
         try:
             cpu = psutil.cpu_percent(interval=1)
             if cpu > CPU_THROTTLE_PERCENT:
                 log.debug("CPU at %.0f%% — skipping", cpu)
             else:
-                result = think()
-                if result:
-                    _store_result(result)
+                cycle += 1
+                # Every 10 cycles: generate a follow-up from a core memory
+                if cycle % _CORE_FOLLOWUP_EVERY == 0:
+                    result = _core_driven_followup()
+                    if result:
+                        log.info("Core-driven follow-up generated.")
+                        _store_result(result)
+                else:
+                    result = think()
+                    if result:
+                        _store_result(result)
         except Exception as e:
             log.error("Error in think(): %s", e)
         evt.wait(RUN_INTERVAL)
