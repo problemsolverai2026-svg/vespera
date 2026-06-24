@@ -338,6 +338,57 @@ def get_security():
     return jsonify({"ok": True, **status})
 
 
+def _extract_followup_answer(user_message: str) -> None:
+    """If the last assistant turn was a follow-up question, store Alfred's answer
+    as a validated memory and mark the follow-up as used."""
+    try:
+        from memory.store import get_recent_conversations, get_followups, mark_followup_used, add_memory
+        convs = get_recent_conversations(limit=6)
+        # Find the last assistant message
+        last_assistant = next((c for c in convs if c['role'] == 'assistant'), None)
+        if not last_assistant:
+            return
+        last_text = (last_assistant.get('content') or '').strip()
+        # Check if it looks like a follow-up question (ends with ? or contains question words)
+        import re
+        is_question = last_text.endswith('?') or bool(re.search(r'\b(did you|have you|do you|what|how|when|where|why|can you|could you)\b', last_text, re.I))
+        if not is_question:
+            return
+        # Store Alfred's answer as a memory
+        memory_text = f"Alfred answered: '{user_message[:300]}' (in response to: '{last_text[:150]}')"
+        add_memory(content=memory_text, layer='validated', source='answer_extraction', trust_score=0.75)
+        # Mark any matching pending follow-up as used
+        followups = get_followups(limit=10)
+        for fup in followups:
+            fup_text = (fup.get('content') or '').lower()
+            # Simple topic match — if 4+ words overlap, it's the same question
+            fup_words = set(re.findall(r'[a-z]{3,}', fup_text))
+            last_words = set(re.findall(r'[a-z]{3,}', last_text.lower()))
+            if len(fup_words & last_words) >= 4:
+                mark_followup_used(fup['id'])
+                break
+    except Exception as e:
+        app.logger.debug("_extract_followup_answer error: %s", e)
+
+
+@app.route("/api/think-queue", methods=["POST"])
+def add_think_queue():
+    """Add a topic to Vespera's thinking queue.
+    POST {"topic": "think about X"}
+    """
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    data = request.get_json(force=True, silent=True) or {}
+    topic = (data.get('topic') or '').strip()[:300]
+    if not topic:
+        return jsonify({"ok": False, "error": "topic required"}), 400
+    from memory.store import add_memory
+    from utils import _sanitize
+    add_memory(content=f"[THINK: {_sanitize(topic, 300)}]", layer='recent', source='think_queue', trust_score=0.8)
+    return jsonify({"ok": True, "queued": topic})
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     auth_err = require_auth()
@@ -365,6 +416,10 @@ def chat():
     # validated memory without going through the background loop thought pipeline.
     from facts import extract_facts_async
     extract_facts_async(safe_message)
+
+    # Answer extraction — if the last assistant message was a follow-up question,
+    # store Alfred's reply as a memory and mark the follow-up as used.
+    _extract_followup_answer(safe_message)
 
     try:
         result = handle_message(safe_message)

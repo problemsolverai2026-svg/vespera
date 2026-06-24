@@ -45,6 +45,9 @@ User's saved notes:
 A sample of your existing memories (do not repeat these):
 {memories}
 
+Things Alfred has already told you about related topics (build on these, don't re-ask):
+{relevant_answers}
+
 Generate ONE of the following:
 
 1. A THOUGHT — a brief observation, connection, or reflection on the conversation (2-3 sentences max). Be specific, not generic.
@@ -69,6 +72,50 @@ Result: {result}"""
 def call_local(prompt: str) -> str | None:
     from utils import call_ollama
     return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.3, num_predict=200)
+
+
+def _relevant_answers(convs: list) -> list[dict]:
+    """Find stored answer_extraction memories that are topically relevant
+    to the current conversation. Returns up to 5 matches."""
+    if not convs:
+        return []
+    # Pull keywords from the last 4 conversation turns
+    recent_text = " ".join(
+        (c.get("content") or "") for c in convs[:4]
+    ).lower()
+    _STOP = {"the","a","an","is","are","was","were","and","or","but","in","on",
+             "at","to","of","for","with","that","this","it","its","you","your",
+             "i","me","my","we","he","she","they","have","has","had","do","did",
+             "not","be","been","from","by","as","so","if","then","what","how",
+             "when","where","who","would","could","should","will","can","just",
+             "about","up","out","no","yes","okay","ok","yeah"}
+    keywords = [
+        w for w in re.findall(r'[a-zA-Z]{4,}', recent_text)
+        if w not in _STOP
+    ]
+    # Deduplicate and take top 8 longest (most distinctive) keywords
+    keywords = list(dict.fromkeys(keywords))
+    keywords = sorted(keywords, key=len, reverse=True)[:8]
+    if not keywords:
+        return []
+    # Search answer_extraction memories for keyword matches
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(__file__).parent / "memory" / "vespera.db"
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        clauses = " OR ".join(["LOWER(content) LIKE ?" for _ in keywords])
+        params = [f"%{kw}%" for kw in keywords]
+        rows = conn.execute(
+            f"SELECT * FROM memories WHERE pruned=0 AND source='answer_extraction' AND ({clauses}) ORDER BY trust_score DESC, created_at DESC LIMIT 5",
+            params
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 def _sample_memories() -> str:
@@ -104,11 +151,37 @@ def _sample_memories() -> str:
 
 def think() -> dict | None:
     """Returns dict with 'type' ('thought' or 'followup') and 'content', or None."""
-    memories     = _sample_memories()
+    # Process thinking queue first — user-requested topics take priority over regular thinking
+    queued = get_memories(layer="recent", limit=1, source_filter="think_queue")
+    if queued:
+        item = queued[0]
+        topic = item["content"].replace("[THINK: ", "").rstrip("]")
+        from memory.store import prune_memory
+        prune_memory(item["id"], reason="think_queue item processed", pruned_by="background_loop")
+        log.info("Processing think-queue item: %s", topic[:80])
+        # Think-queue uses DuckDuckGo directly — free, no Venice cost
+        from web_search import _search_duckduckgo
+        raw_results = _search_duckduckgo(topic)
+        result = " ".join(r.get("body", "") for r in raw_results)[:2000] if raw_results else None
+        if result:
+            thought = call_local(WEB_SEARCH_SUMMARY_PROMPT.format(question=topic, result=result[:2000]))
+            if thought:
+                return {"type": "thought", "content": f"[think-queue] {thought}"[:MAX_THOUGHT_LENGTH]}
+        return None
+
     convs        = get_recent_conversations(limit=12)
     conversation = "\n".join(
         f"{c['role'].upper()}: {_sanitize(c['content'], 300)}" for c in reversed(convs)
     ) if convs else "No recent conversation."
+
+    # Pull answers Alfred gave to past follow-up questions that are relevant
+    # to the current conversation — inject these first so the model can build on them
+    relevant = _relevant_answers(convs)
+    relevant_text = "\n".join(
+        f"- [past answer] {_sanitize(m['content'], 200)}" for m in relevant
+    ) if relevant else ""
+
+    memories     = _sample_memories()
 
     all_notes = list_notes()
     notes_text = "\n".join(
@@ -119,6 +192,7 @@ def think() -> dict | None:
         conversation=conversation,
         notes=notes_text,
         memories=memories,
+        relevant_answers=relevant_text if relevant_text else "None.",
         max_length=MAX_THOUGHT_LENGTH,
     ))
     if not raw:
@@ -132,6 +206,8 @@ def think() -> dict | None:
         question = _sanitize(search_match.group(1).strip(), 300)
         if not question:
             log.debug("Empty SEARCH: query — skipping.")
+            return None
+        if not _search_allowed():
             return None
         log.info("Web search: %s", question[:80])
         result = _web_search(question)
@@ -156,12 +232,35 @@ def think() -> dict | None:
         log.debug("Nothing new this pass.")
         return None
 
-    # Regular thought
+    # Regular thought — dedup check before returning
     content = _sanitize(raw, MAX_THOUGHT_LENGTH)
-    return {"type": "thought", "content": content} if content else None
+    if not content:
+        return None
+    from cleanup_crew import _is_duplicate
+    if _is_duplicate(content):
+        log.debug("Background thought skipped — near-duplicate of existing memory.")
+        return None
+    return {"type": "thought", "content": content}
 
 
 _shutdown = threading.Event()
+
+# Web search rate limit — background auto-searches only, max 2 per hour
+_SEARCH_MAX_PER_HOUR = 2
+_search_timestamps: list = []  # rolling window of recent search times
+
+def _search_allowed() -> bool:
+    """Return True if a background web search is permitted under the rate limit."""
+    import time
+    now = time.time()
+    cutoff = now - 3600  # 1 hour window
+    # Prune old entries
+    _search_timestamps[:] = [t for t in _search_timestamps if t > cutoff]
+    if len(_search_timestamps) >= _SEARCH_MAX_PER_HOUR:
+        log.debug("Web search rate limit hit (%d/%d per hour) — skipping.", len(_search_timestamps), _SEARCH_MAX_PER_HOUR)
+        return False
+    _search_timestamps.append(now)
+    return True
 
 
 _MAX_PENDING_FOLLOWUPS = 5   # don't pile up more than this many unused questions

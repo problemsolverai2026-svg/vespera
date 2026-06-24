@@ -59,7 +59,7 @@ _STOP_WORDS = {
     "also", "can", "will", "would", "could", "should", "get", "its", "than",
     "its", "user", "alfred", "thought", "recent", "note", "seem", "seems",
 }
-_DEDUP_THRESHOLD = 0.65  # word-overlap ratio above which a memory is a duplicate
+_DEDUP_THRESHOLD = 0.80  # word-overlap ratio above which a memory is a duplicate
 
 
 def _keywords(text: str) -> set:
@@ -161,13 +161,21 @@ def run_cleanup():
 
 _shutdown = threading.Event()  # fallback used when run_loop() is called without an event
 
+_DEDUP_FULL_EVERY = 20  # run retroactive dedup every N cleanup cycles
+
 def run_loop(shutdown_event: threading.Event = None):
     evt = shutdown_event if shutdown_event is not None else _shutdown
     init_db()
     log.info("Started — model: %s — every %ss", OLLAMA_MODEL, CLEANUP_INTERVAL)
+    cycle = 0
     while not evt.is_set():
         try:
             run_cleanup()
+            cycle += 1
+            if cycle % _DEDUP_FULL_EVERY == 0:
+                log.info("Running periodic full dedup scan (cycle %d)...", cycle)
+                kept, pruned = run_dedup_validated()
+                log.info("Full dedup done — kept: %d, pruned: %d", kept, pruned)
         except Exception as e:
             log.error("Error: %s", e)
         evt.wait(CLEANUP_INTERVAL)
