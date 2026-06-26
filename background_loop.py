@@ -17,8 +17,22 @@ import psutil
 from config import get_component, BACKGROUND_LOOP_INTERVAL, MAX_THOUGHT_LENGTH
 
 CPU_THROTTLE_PERCENT = float(os.getenv("VESPERA_CPU_LIMIT", "80"))
+RAM_SKIP_PERCENT   = float(os.getenv("VESPERA_RAM_SKIP",  "85"))  # skip cycle above this
+RAM_KILL_PERCENT   = float(os.getenv("VESPERA_RAM_KILL",  "92"))  # kill ollama above this
+
+def _ram_percent() -> float:
+    return psutil.virtual_memory().percent
+
+def _kill_ollama():
+    """Kill any running ollama inference process to free RAM immediately."""
+    import subprocess
+    try:
+        subprocess.run(["pkill", "-f", "ollama runner"], capture_output=True)
+        log.warning("RAM killswitch fired — ollama runner killed to free memory.")
+    except Exception as e:
+        log.error("RAM killswitch: failed to kill ollama runner: %s", e)
 from web_search import search as _web_search
-from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_followups
+from memory.store import init_db, add_memory, get_memories, get_recent_conversations, get_followups, store_fingerprint
 from notes import list_notes, init_notes_db
 from utils import get_logger, _sanitize
 
@@ -48,19 +62,22 @@ A sample of your existing memories (do not repeat these):
 Things Alfred has already told you about related topics (build on these, don't re-ask):
 {relevant_answers}
 
+What you already know about the CURRENT topic (do NOT generate a THOUGHT about any of these — find something genuinely new or output NOTHING_NEW):
+{topic_memories}
+
 Generate ONE of the following:
 
-1. A THOUGHT — a brief observation, connection, or reflection on the conversation (2-3 sentences max). Be specific, not generic.
+1. A THOUGHT — a brief observation, connection, or reflection on the conversation (2-3 sentences max). Be specific, not generic. Must be something NOT already covered above.
 
 2. A FOLLOW-UP — a question you are genuinely curious about based on something the user mentioned. Prefix it with FOLLOWUP: (e.g. "FOLLOWUP: Last time you mentioned wanting to retire — have you figured out a timeline yet?")
 
 3. SEARCH: <question> — if you need to look something up to better understand what was discussed.
 
-4. NOTHING_NEW — if there is genuinely nothing worth generating right now.
+4. NOTHING_NEW — if there is genuinely nothing worth generating right now, or if the topic is already well-covered in your existing memories above.
 
 Rules:
 - Reference specific things from the conversation when possible
-- Do NOT repeat anything already in your existing memories
+- Do NOT repeat anything already in your existing memories or the current-topic list above
 - Follow-ups should feel natural, like something a friend would ask
 - Max {max_length} characters"""
 
@@ -72,6 +89,51 @@ Result: {result}"""
 def call_local(prompt: str) -> str | None:
     from utils import call_ollama
     return call_ollama(OLLAMA_URL, OLLAMA_MODEL, prompt, temperature=0.3, num_predict=200)
+
+
+def _topic_memories(convs: list) -> list[dict]:
+    """Find validated THOUGHT memories that share topic keywords with the current
+    conversation. Used to show the model what it already knows so it stops
+    regenerating the same observations."""
+    if not convs:
+        return []
+    recent_text = " ".join(
+        (c.get("content") or "") for c in convs[:6]
+    ).lower()
+    _STOP = {"the","a","an","is","are","was","were","and","or","but","in","on",
+             "at","to","of","for","with","that","this","it","its","you","your",
+             "i","me","my","we","he","she","they","have","has","had","do","did",
+             "not","be","been","from","by","as","so","if","then","what","how",
+             "when","where","who","would","could","should","will","can","just",
+             "about","up","out","no","yes","okay","ok","yeah","alfred","rook"}
+    keywords = [
+        w for w in re.findall(r'[a-zA-Z]{4,}', recent_text)
+        if w not in _STOP
+    ]
+    keywords = list(dict.fromkeys(keywords))
+    keywords = sorted(keywords, key=len, reverse=True)[:8]
+    if not keywords:
+        return []
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(__file__).parent / "memory" / "vespera.db"
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        clauses = " OR ".join(["LOWER(content) LIKE ?" for _ in keywords])
+        params = [f"%{kw}%" for kw in keywords]
+        rows = conn.execute(
+            f"""SELECT * FROM memories WHERE pruned=0 AND layer='validated'
+                AND UPPER(content) LIKE 'THOUGHT:%'
+                AND ({clauses})
+                ORDER BY trust_score DESC, created_at DESC LIMIT 8""",
+            params
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 def _relevant_answers(convs: list) -> list[dict]:
@@ -181,6 +243,13 @@ def think() -> dict | None:
         f"- [past answer] {_sanitize(m['content'], 200)}" for m in relevant
     ) if relevant else ""
 
+    # Pull validated THOUGHT memories about the current topic so the model
+    # knows what it already knows and stops regenerating the same observations
+    topic_mems = _topic_memories(convs)
+    topic_text = "\n".join(
+        f"- {_sanitize(m['content'], 150)}" for m in topic_mems
+    ) if topic_mems else "None."
+
     memories     = _sample_memories()
 
     all_notes = list_notes()
@@ -193,6 +262,7 @@ def think() -> dict | None:
         notes=notes_text,
         memories=memories,
         relevant_answers=relevant_text if relevant_text else "None.",
+        topic_memories=topic_text,
         max_length=MAX_THOUGHT_LENGTH,
     ))
     if not raw:
@@ -265,6 +335,7 @@ def _search_allowed() -> bool:
 
 _MAX_PENDING_FOLLOWUPS = 5   # don't pile up more than this many unused questions
 _FOLLOWUP_TOPIC_WORDS   = 6  # top N words to compare for topic overlap
+_MAX_THOUGHTS_PER_DAY   = 30 # hard cap on new THOUGHT memories stored per calendar day
 
 
 def _followup_is_duplicate(new_content: str) -> bool:
@@ -294,6 +365,25 @@ def _followup_is_duplicate(new_content: str) -> bool:
     return False
 
 
+def _thoughts_today() -> int:
+    """Count THOUGHT memories (recent + validated) added today by the background loop."""
+    import sqlite3
+    from pathlib import Path
+    db_path = Path(__file__).parent / "memory" / "vespera.db"
+    today = time.strftime("%Y-%m-%d")
+    try:
+        conn = sqlite3.connect(str(db_path))
+        (count,) = conn.execute(
+            "SELECT COUNT(*) FROM memories WHERE source='background_loop' "
+            "AND pruned=0 AND DATE(created_at)=?",
+            (today,)
+        ).fetchone()
+        conn.close()
+        return count
+    except Exception:
+        return 0
+
+
 def _store_result(result: dict) -> None:
     """Thoughts → recent (cleanup pipeline). Follow-ups → validated directly."""
     kind    = result["type"]
@@ -304,8 +394,18 @@ def _store_result(result: dict) -> None:
         mem_id = add_memory(content=content, layer="validated", source="followup", trust_score=0.65)
         log.info("Follow-up stored (%s): %s", mem_id[:8], content[:80])
     else:
+        # Daily rate cap — stop piling up THOUGHTs
+        today_count = _thoughts_today()
+        if today_count >= _MAX_THOUGHTS_PER_DAY:
+            log.debug("Daily THOUGHT cap reached (%d/%d) — skipping.", today_count, _MAX_THOUGHTS_PER_DAY)
+            return
         mem_id = add_memory(content=content, layer="recent", source="background_loop")
-        log.info("Thought saved    (%s): %s...", mem_id[:8], content[:80])
+        log.info("Thought saved    (%s) [%d/%d today]: %s...", mem_id[:8], today_count + 1, _MAX_THOUGHTS_PER_DAY, content[:80])
+        # Persist fingerprint immediately — survives future pruning
+        from cleanup_crew import _thought_fingerprint
+        fp = _thought_fingerprint(content)
+        if fp:
+            store_fingerprint(fp, content, mem_id)
 
 
 _CORE_FOLLOWUP_EVERY = 10   # every N cycles, generate a follow-up from a core memory
@@ -355,9 +455,15 @@ def run_loop(shutdown_event: threading.Event = None):
     cycle = 0
     while not evt.is_set():
         try:
+            ram = _ram_percent()
+            if ram > RAM_KILL_PERCENT:
+                log.warning("RAM at %.0f%% — hard killswitch firing.", ram)
+                _kill_ollama()
+                evt.wait(30)
+                continue
             cpu = psutil.cpu_percent(interval=1)
-            if cpu > CPU_THROTTLE_PERCENT:
-                log.debug("CPU at %.0f%% — skipping", cpu)
+            if cpu > CPU_THROTTLE_PERCENT or ram > RAM_SKIP_PERCENT:
+                log.debug("CPU %.0f%% / RAM %.0f%% — skipping cycle.", cpu, ram)
             else:
                 cycle += 1
                 # Every 10 cycles: generate a follow-up from a core memory

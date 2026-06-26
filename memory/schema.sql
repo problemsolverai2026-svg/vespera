@@ -81,3 +81,15 @@ CREATE INDEX IF NOT EXISTS idx_memories_pruned  ON memories(pruned);
 CREATE INDEX IF NOT EXISTS idx_links_a          ON memory_links(memory_id_a);
 CREATE INDEX IF NOT EXISTS idx_links_b          ON memory_links(memory_id_b);
 CREATE INDEX IF NOT EXISTS idx_conv_timestamp   ON conversations(timestamp);
+
+-- Persistent fingerprint store — survives memory pruning.
+-- Prevents re-generating near-duplicate THOUGHTs after their source is cleaned up.
+CREATE TABLE IF NOT EXISTS seen_fingerprints (
+    id          TEXT PRIMARY KEY,        -- UUID
+    keywords    TEXT NOT NULL,           -- comma-separated sorted keyword set (the fingerprint)
+    preview     TEXT,                    -- first 100 chars of source content (for debugging)
+    memory_id   TEXT,                    -- original memory id (may be pruned — informational only)
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fp_created ON seen_fingerprints(created_at);

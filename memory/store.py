@@ -83,6 +83,21 @@ def init_db():
                             log.debug("Column %s already added by concurrent process — skipping", col)
                         else:
                             raise
+        # Ensure seen_fingerprints table exists (schema.sql handles new installs;
+        # this migration covers existing DBs that pre-date the table).
+        with _connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS seen_fingerprints (
+                    id          TEXT PRIMARY KEY,
+                    keywords    TEXT NOT NULL,
+                    preview     TEXT,
+                    memory_id   TEXT,
+                    created_at  TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fp_created ON seen_fingerprints(created_at)"
+            )
     log.info("Memory store initialized at %s", DB_PATH)
 
 
@@ -114,6 +129,39 @@ def add_memory(
         )
 
     return memory_id
+
+
+def store_fingerprint(keywords: set, content: str, memory_id: str = "") -> None:
+    """Persist a THOUGHT fingerprint (keyword set) so dedup survives pruning.
+    Safe to call even if the table doesn't exist yet (init_db handles creation)."""
+    if not keywords:
+        return
+    kw_str = ",".join(sorted(keywords))
+    fp_id = str(uuid.uuid4())
+    now = _now()
+    preview = (content or "")[:100]
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO seen_fingerprints (id, keywords, preview, memory_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (fp_id, kw_str, preview, memory_id or "", now),
+            )
+    except Exception as e:
+        log.warning("store_fingerprint: %s", e)
+
+
+def get_fingerprints(limit: int = 5000) -> list[set]:
+    """Return all stored fingerprints as a list of keyword sets."""
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT keywords FROM seen_fingerprints ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+        return [set(r["keywords"].split(",")) for r in rows if r["keywords"]]
+    except Exception:
+        return []
 
 
 def add_conversation(role: str, content: str, summary: str = None,

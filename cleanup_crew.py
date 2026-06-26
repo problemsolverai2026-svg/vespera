@@ -9,7 +9,7 @@ import re
 import time
 import threading
 from config import get_component, CLEANUP_INTERVAL, CLEANUP_BATCH_SIZE
-from memory.store import init_db, get_memories, promote_memory, prune_memory
+from memory.store import init_db, get_memories, promote_memory, prune_memory, store_fingerprint, get_fingerprints
 from utils import get_logger, parse_json_response, _sanitize
 
 log = get_logger("cleanup_crew")
@@ -61,10 +61,36 @@ _STOP_WORDS = {
 }
 _DEDUP_THRESHOLD = 0.80  # word-overlap ratio above which a memory is a duplicate
 
+# Action/transition words that vary between near-identical THOUGHT observations.
+# Stripping these before comparing extracts the core topic — the actual fingerprint.
+_THOUGHT_ACTION_WORDS = {
+    "shift", "shifts", "shifted", "focus", "focused", "focusing", "focuses",
+    "decision", "decided", "deciding", "discussing", "discussed", "discuss",
+    "mention", "mentioned", "mentioning", "implement", "implementing", "implemented",
+    "considering", "considered", "consider", "towards", "toward", "after", "following",
+    "previous", "current", "currently", "recently", "now", "seems", "appears",
+    "working", "talked", "talking", "started", "begin", "began", "moved",
+    "transition", "switched", "pivot", "pivoting", "exploring", "looking",
+    "trying", "adding", "added", "add", "take", "taking", "took", "need",
+    "needs", "needed", "want", "wants", "wanted", "sitting", "suggest",
+    "suggested", "suggesting", "indicate", "indicates", "indicated",
+    "reflect", "reflects", "reflected", "show", "shows", "showed",
+}
+_FINGERPRINT_THRESHOLD = 0.65  # lower threshold used for THOUGHT fingerprint comparison
+
 
 def _keywords(text: str) -> set:
     words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', text) if len(w) > 2}
     return words - _STOP_WORDS
+
+
+def _thought_fingerprint(content: str) -> set:
+    """Extract core topic keywords from a THOUGHT memory, stripping action/transition
+    words that vary across near-identical observations about the same subject."""
+    text = re.sub(r'^THOUGHT:\s*', '', content, flags=re.IGNORECASE)
+    text = re.sub(r"^Alfred'?s?\s+", '', text, flags=re.IGNORECASE)
+    words = {w.lower() for w in re.findall(r'[a-zA-Z0-9]+', text) if len(w) > 2}
+    return words - _STOP_WORDS - _THOUGHT_ACTION_WORDS
 
 
 def _overlap_ratio(a: set, b: set) -> float:
@@ -91,17 +117,35 @@ def _is_duplicate(content: str) -> bool:
         clauses = " OR ".join(["LOWER(content) LIKE ?" for _ in top_kws])
         params = [f"%{kw}%" for kw in top_kws]
         rows = conn.execute(
-            f"SELECT content FROM memories WHERE layer='validated' AND pruned=0 AND ({clauses}) LIMIT 30",
+            f"SELECT content FROM memories WHERE layer='validated' AND pruned=0 AND ({clauses}) LIMIT 200",
             params
         ).fetchall()
         conn.close()
     except Exception:
         return False
     incoming = _keywords(content)
+    is_thought = content.upper().startswith("THOUGHT:")
+    incoming_fp = _thought_fingerprint(content) if is_thought else None
+
     for row in rows:
         existing = _keywords(row["content"])
+        # Standard word-overlap check
         if _overlap_ratio(incoming, existing) >= _DEDUP_THRESHOLD:
             return True
+        # Fingerprint check for THOUGHT memories — catches same topic in different phrasing
+        if is_thought and incoming_fp and row["content"].upper().startswith("THOUGHT:"):
+            existing_fp = _thought_fingerprint(row["content"])
+            if len(incoming_fp) >= 3 and _overlap_ratio(incoming_fp, existing_fp) >= _FINGERPRINT_THRESHOLD:
+                return True
+
+    # Persistent fingerprint check — catches duplicates of PRUNED memories too.
+    # This is the fix for fingerprints expiring when source memories are deleted.
+    if is_thought and incoming_fp and len(incoming_fp) >= 3:
+        stored_fps = get_fingerprints(limit=5000)
+        for stored_fp in stored_fps:
+            if stored_fp and _overlap_ratio(incoming_fp, stored_fp) >= _FINGERPRINT_THRESHOLD:
+                return True
+
     return False
 
 
@@ -161,7 +205,7 @@ def run_cleanup():
 
 _shutdown = threading.Event()  # fallback used when run_loop() is called without an event
 
-_DEDUP_FULL_EVERY = 20  # run retroactive dedup every N cleanup cycles
+_DEDUP_FULL_EVERY = 5   # run retroactive dedup every N cleanup cycles (was 20)
 
 def run_loop(shutdown_event: threading.Event = None):
     evt = shutdown_event if shutdown_event is not None else _shutdown
@@ -201,23 +245,34 @@ def run_dedup_validated(dry_run: bool = False) -> tuple[int, int]:
     conn.close()
 
     log.info("Dedup pass: %d validated memories to scan", len(rows))
-    seen: list[set] = []  # keyword sets of kept memories
+    seen: list[set] = []       # keyword sets of kept memories
+    seen_fp: list[tuple] = []   # (is_thought: bool, fingerprint: set) for kept memories
     kept = pruned = 0
 
     for row in rows:
         kws = _keywords(row["content"])
+        is_thought = row["content"].upper().startswith("THOUGHT:")
+        fp = _thought_fingerprint(row["content"]) if is_thought else set()
         if len(kws) < 3:
             kept += 1
             seen.append(kws)
+            seen_fp.append((is_thought, fp))
             continue
         duplicate = any(_overlap_ratio(kws, s) >= _DEDUP_THRESHOLD for s in seen)
+        if not duplicate and is_thought and len(fp) >= 3:
+            duplicate = any(
+                s_is_thought and _overlap_ratio(fp, s_fp) >= _FINGERPRINT_THRESHOLD
+                for s_is_thought, s_fp in seen_fp
+            )
         if duplicate:
             if not dry_run:
                 prune_memory(row["id"], reason="retroactive dedup", pruned_by="cleanup_crew")
-            log.info("DEDUP%s %s | %s...", " (dry)" if dry_run else "", row["id"][:8], row["content"][:80])
+            content_preview = (row["content"] or "")[:80]
+            log.info("DEDUP%s %s | %s...", " (dry)" if dry_run else "", (row["id"] or "")[:8], content_preview)
             pruned += 1
         else:
             seen.append(kws)
+            seen_fp.append((is_thought, fp))
             kept += 1
 
     log.info("Dedup pass done — kept: %d, pruned: %d%s", kept, pruned, " (dry run)" if dry_run else "")

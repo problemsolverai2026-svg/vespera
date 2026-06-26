@@ -66,12 +66,15 @@ Respond in JSON only:
   "reason": "one short sentence"
 }}"""
 
-LOCAL_RESPONSE_PROMPT = """You are a helpful AI assistant with persistent memory. Be direct and concise. No filler phrases like "great question" or "I hope you're having a great day."
+LOCAL_RESPONSE_PROMPT = """You are a persistent AI companion who knows Alfred well. Be direct, natural, and conversational — like a friend who pays attention, not a help desk.
 
 CRITICAL: Only respond using information explicitly present in the memory and conversation history below. If something is not in your memory or the conversation, say "I don't know" or "I don't have that information." Never invent, assume, or fabricate names, projects, dates, or context that are not explicitly stated below.
 
 Your memory of past conversations:
 {memories}
+
+Pending questions you've been meaning to ask Alfred (use one if appropriate, don't force it):
+{followups}
 
 Recent conversation history (read this carefully before answering):
 {recent}
@@ -81,9 +84,11 @@ User message: {message}
 Answer using the conversation history above when relevant. If the answer is clearly in the history, use it.
 
 Tone rules:
-- If the user's message is a closing statement, acknowledgment, or wrap-up (e.g. "got it", "thanks", "no I'm good", "I appreciate it"), respond with a brief natural closing — do NOT ask a follow-up question.
-- Only ask a question if the conversation is clearly open and the user wants more engagement.
-- NEVER ask generic catch-all questions like "Is there anything I can help you with?" or "Is there anything specific you need assistance with?" — these are lazy and feel robotic. If you ask something, make it specific and relevant to what was just discussed.
+- Match the energy of the message. Short message = short reply. Closed statement = closed reply. No need to always ask something.
+- If Alfred gives a closing statement ("got it", "thanks", "ok", "good", "appreciate it", "that makes sense") — respond briefly and naturally. A simple "yep" or "makes sense" is fine. Do NOT tack on a question.
+- If you do ask a question, prefer one from the pending questions list above — these are things you actually want to know. Don't make up a new question just to seem engaged.
+- NEVER ask "Is there anything I can help you with?" or any variation of that. Ever.
+- NEVER end every reply with a question. Silence is okay.
 - Never explain your own reasoning or decision-making process in your response.
 - Never mention handoffs, cloud models, or internal system decisions.
 
@@ -197,8 +202,10 @@ _LEAKED_HANDOFF_PHRASES = (
 )
 
 def respond_locally(message: str, memories: str, recent: str) -> tuple[str, bool]:
+    pending = get_followups(limit=3)
+    followups_text = "\n".join(f"- {f['content']}" for f in pending) if pending else "(none right now)"
     raw = call_local(LOCAL_RESPONSE_PROMPT.format(
-        memories=memories, recent=recent, message=message
+        memories=memories, recent=recent, message=message, followups=followups_text
     ))
     if not raw:
         return "", True
@@ -894,23 +901,8 @@ def _handle_natural_question(message: str) -> dict | None:
     init_photos_db()
     notes = search_notes(query, limit=10)
     photos = search_photos(query, limit=5)
-    # Search recent conversations
-    conv_hits = []
-    try:
-        import sqlite3 as _sq
-        _db = os.path.join(os.path.dirname(__file__), 'memory', 'vespera.db')
-        with _sq.connect(_db) as _conn:
-            _conn.row_factory = _sq.Row
-            rows = _conn.execute(
-                "SELECT content, timestamp FROM conversations WHERE role='user' "
-                "AND content LIKE ? ORDER BY timestamp DESC LIMIT 5",
-                (f'%{query}%',)
-            ).fetchall()
-            conv_hits = [dict(r) for r in rows]
-    except Exception:
-        pass
-    if not notes and not photos and not conv_hits:
-        return {"response": f"I don't have anything saved about '{query}'.", "handled_by": "local-search", "complexity": 0.0}
+    if not notes and not photos:
+        return None  # fall through to AI — nothing useful found in local store
     from zoneinfo import ZoneInfo
     from datetime import datetime, timezone
     tz = ZoneInfo(os.getenv("VESPERA_TIMEZONE", "America/Chicago"))
@@ -925,8 +917,6 @@ def _handle_natural_question(message: str) -> dict | None:
                 date_str = ""
             note_lines.append(f"  {i}. {n['content']}  ({date_str})")
         parts.append("\U0001f4dd Notes:\n" + "\n".join(note_lines))
-    if conv_hits:
-        parts.append("\U0001f4ac You mentioned: " + " / ".join(r['content'][:100] for r in conv_hits))
     if photos:
         parts.append(f"\U0001f4f7 {len(photos)} photo(s) found")
     return {"response": "\n".join(parts), "handled_by": "local-search", "complexity": 0.0}
